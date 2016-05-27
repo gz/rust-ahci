@@ -1,0 +1,12 @@
+[package]
+name = "ahci"
+version = "0.1.0"
+authors = ["Gerd Zellweger <mail@gerdzellweger.com>"]
+
+[dependencies]
+uio = "0.1.*"
+mmap = "*"
+
+[[bin]]
+name = "ahci"
+path = "src/bin/ahci.rs"
