@@ -6,6 +6,7 @@ authors = ["Gerd Zellweger <mail@gerdzellweger.com>"]
 [dependencies]
 uio = "0.1.*"
 mmap = "*"
+#pci = "*"
 
 [[bin]]
 name = "ahci"
