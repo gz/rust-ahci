@@ -67,36 +67,36 @@ fn bits_get(r: u32, from: usize, to: usize) -> u32 {
 pub struct HBACapability(pub u32);
 
 impl HBACapability {
-    bit_get!(doc = "Supports 64-bit Addressing", s64a, 31);
-    bit_get!(doc = "Supports Native Command Queuing", sncq, 30);
-    bit_get!(doc = "Supports SNotification Register", ssntf, 29);
-    bit_get!(doc = "Supports Mechanical Presence Switch", smps, 28);
-    bit_get!(doc = "Supports Staggered Spin-up", sss, 27);
-    bit_get!(doc = "Supports Aggressive Link Power Management", salp, 26);
-    bit_get!(doc = "Supports Activity LED", sal, 25);
-    bit_get!(doc = "Supports Command List Override", sclo, 24);
-    bit_get!(doc = "Supports AHCI mode only", sam, 18);
-    bit_get!(doc = "Supports Port Multiplier", spm, 17);
-    bit_get!(doc = "FIS-based Switching Supported", fbss, 16);
-    bit_get!(doc = "PIO Multiple DRQ Block", pmd, 15);
-    bit_get!(doc = "Slumber State Capable", ssc, 14);
-    bit_get!(doc = "Partial State Capable", psc, 13);
-    bit_get!(doc = "Command Completion Coalescing Supported", cccs, 7);
-    bit_get!(doc = "Enclosure Management Supported", ems, 6);
-    bit_get!(doc = "Supports External SATA", sxs, 5);
+    bit_get!(doc = "Supports 64-bit Addressing", has_64bit_addressing, 31);
+    bit_get!(doc = "Supports Native Command Queuing", has_native_command_queing, 30);
+    bit_get!(doc = "Supports SNotification Register", has_snotification_register, 29);
+    bit_get!(doc = "Supports Mechanical Presence Switch", has_mechanical_presence_switch, 28);
+    bit_get!(doc = "Supports Staggered Spin-up", has_staggered_spin_up, 27);
+    bit_get!(doc = "Supports Aggressive Link Power Management", has_aggressive_link_power_mgmt, 26);
+    bit_get!(doc = "Supports Activity LED", has_activity_led, 25);
+    bit_get!(doc = "Supports Command List Override", has_command_list_override, 24);
+    bit_get!(doc = "Supports AHCI mode only", has_ahci_mode_only, 18);
+    bit_get!(doc = "Supports Port Multiplier", has_port_multiplier, 17);
+    bit_get!(doc = "FIS-based Switching Supported", has_fis_switching, 16);
+    bit_get!(doc = "PIO Multiple DRQ Block", has_multiple_drq_blocks, 15);
+    bit_get!(doc = "Slumber State Capable", has_slumber_state, 14);
+    bit_get!(doc = "Partial State Capable", has_partial_state, 13);
+    bit_get!(doc = "Command Completion Coalescing Supported", has_cmd_completion_coalescing, 7);
+    bit_get!(doc = "Enclosure Management Supported", has_enclosure_mgmt, 6);
+    bit_get!(doc = "Supports External SATA", has_external_stat, 5);
 
     /// Number of Command Slots
-    pub fn ncs(&self) -> u32 {
+    pub fn command_slots(&self) -> u32 {
         bits_get(self.0, 8, 12)
     }
 
     /// Interface Speed Support
-    pub fn iss(&self) -> u32 {
+    pub fn interface_speed(&self) -> u32 {
         bits_get(self.0, 20, 23)
     }
 
     /// Number of Ports (NP)
-    pub fn np(&self) -> u32 {
+    pub fn ports(&self) -> u32 {
         bits_get(self.0, 0, 4)
     }
 }
@@ -187,20 +187,9 @@ impl CommandCompletionControl {
         unreachable!()
     }
 
-    /// Is CCC enabled?
-    pub fn enabled(&self) -> bool {
-        is_bit_set!(self.0, 0)
-    }
-
-    // Enable CCC
-    pub fn enable(&mut self) {
-        unreachable!()
-    }
-
-    // Disable CCC
-    pub fn disable(&mut self) {
-        unreachable!()
-    }
+    bit_get!(doc = "Is CCC enabled?", enabled, 0);
+    bit_set!(doc = "Enable CCC", enable, 0);
+    bit_clear!(doc = "Disable CCC", disable, 0);
 }
 
 #[derive(Debug)]
@@ -242,18 +231,56 @@ impl EnclosureLocation {
 pub struct EnclosureControl(u32);
 
 impl EnclosureControl {
+    bit_get!(doc = "Port Multiplier Support?", has_port_multiplier, 27);
+    bit_get!(doc = "Activity LED Hardware Driven", has_hardware_activity_led, 26);
+    bit_get!(doc = "Transmit Only", has_transmit_only, 25);
+    bit_get!(doc = "Single Message Buffer", has_single_message_buffer, 24);
+    bit_get!(doc = "SGPIO Enclosure Management Messages", has_sgpio, 19);
+    bit_get!(doc = "SES-2 Enclosure Management Messages", has_ses2, 18);
+    bit_get!(doc = "SAF-TE Enclosure Management Messages", has_safte, 17);
+    bit_get!(doc = "LED Message Types", led_types, 16);
+
+    bit_set!(doc = "Reset", reset, 9);
+    bit_set!(doc = "Transmit Message", transmit_message, 8);
+
+    bit_get!(doc = "Message Received", message_received, 0);
+    bit_set!(doc = "Message Received", set_message_received, 0);
 }
 
 #[derive(Debug)]
 pub struct ExtendedCaps(u32);
 
 impl ExtendedCaps {
+    bit_get!(doc = "DevSleep Entrance from Slumber Only", has_deso, 5);
+    bit_get!(doc = "Supports Aggressive Device Sleep Management", has_agressive_sleep_management, 4);
+    bit_get!(doc = "Supports Device Sleep", has_device_sleep, 3);
+    bit_get!(doc = "Automatic Partial to Slumber Transitions", has_automatic_slumber, 2);
+    bit_get!(doc = "NVMHCI Present", has_nvmhci, 1);
+    bit_get!(doc = "BIOS/OS Handoff", has_bios_os_handoff, 0);
 }
 
 #[derive(Debug)]
 pub struct BiosHandOffStatus(u32);
 
 impl BiosHandOffStatus {
+    bit_get!(doc = "BIOS Busy", is_bios_busy, 4);
+    bit_set!(doc = "Set BIOS Busy", set_bios_busy, 4);
+    bit_clear!(doc = "Clear BIOS Busy", clear_bios_busy, 4);
+
+    bit_get!(doc = "OS Ownership Change", change_ownership_to_os, 3);
+    bit_set!(doc = "Clear OS Ownership Change Status", clear_change_ownership_to_os, 3);
+
+    bit_get!(doc = "SMI on OS Ownership Change", has_smi_on_ownership_change, 2);
+    bit_set!(doc = "SMI on OS Ownership Change Enable", enable_smi_on_ownership_change, 2);
+    bit_clear!(doc = "SMI on OS Ownership Change Disable", disable_smi_on_ownership_change, 2);
+
+    bit_get!(doc = "OS Owned Semaphore", os_owned, 1);
+    bit_set!(doc = "OS Owned Semaphore", set_os_owned, 1);
+    bit_clear!(doc = "OS Owned Semaphore", clear_os_owned, 1);
+
+    bit_get!(doc = "BIOS Owned Semaphore", bios_owned, 1);
+    bit_set!(doc = "BIOS Owned Semaphore", set_bios_owned, 1);
+    bit_clear!(doc = "BIOS Owned Semaphore", clear_bios_owned, 1);
 }
 
 #[repr(packed)]
