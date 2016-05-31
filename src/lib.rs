@@ -126,9 +126,9 @@ impl HBAVersion {
 }
 
 #[derive(Debug)]
-pub struct InterruptStatus(u32);
+pub struct HbaInterruptStatus(u32);
 
-impl InterruptStatus {
+impl HbaInterruptStatus {
 
     /// Interrupt Pending Status
     pub fn is_pending(&self, port: usize) -> bool {
@@ -290,7 +290,7 @@ pub struct Hba {
     /// Global host control (0x04)
     pub ghc: GlobalHBAControl,
     /// Interrupt status (0x08)
-    pub is: InterruptStatus,
+    pub is: HbaInterruptStatus,
     /// Port implemented (0x0C)
     pub pi: ImplementedPorts,
     /// Version (0x10)
@@ -340,17 +340,17 @@ pub struct HbaPort {
     /// FIS base address, 256-byte aligned (0x08)
     pub fb: u64,
     /// interrupt status (0x10)
-    pub is: u32,
+    pub is: PortInterruptStatus,
     /// interrupt enable (0x14)
-    pub ie: u32,
+    pub ie: InterruptEnable,
     /// command and status (0x18)
-    pub cmd: u32,
+    pub cmd: CommandAndStatus,
     /// Reserved (0x1C)
     pub rsv0: u32,
     /// task file data (0x20)
-    pub tfd: u32,
+    pub tfd: TaskFileData,
     /// signature (0x24)
-    pub sig: u32,
+    pub sig: PortSignature,
     /// SATA status (SCR0:SStatus) (0x28)
     pub ssts: u32,
     /// SATA control (SCR2:SControl) (0x2C)
@@ -370,6 +370,348 @@ pub struct HbaPort {
     /// Vendor specific (0x70 - 0x7F)
     pub vendor: [u32; 4],
 }
+
+#[derive(Debug)]
+pub struct PortInterruptStatus(u32);
+
+impl PortInterruptStatus {
+    bit_get!(doc = "Cold Port Detect Status", cold_port_detected, 31);
+    bit_clear!(doc = "Clear Cold Port Detect Status", clear_cold_port_detected, 31);
+
+    bit_get!(doc = "Task File Error Status", task_file_error, 30);
+    bit_clear!(doc = "Clear Task File Error Status", clear_task_file_error, 30);
+
+    bit_get!(doc = "Host Bus Fatal Error Status", host_bus_fatal_error, 29);
+    bit_clear!(doc = "Clear Host Bus Fatal Error Status", clear_host_bus_fatal_error, 29);
+
+    bit_get!(doc = "Host Bus Data Error Status", host_bus_data_error, 28);
+    bit_clear!(doc = "Clear Host Bus Data Error Status", clear_host_bus_data_error, 28);
+
+    bit_get!(doc = "Interface Fatal Error Status", interface_fatal_error, 27);
+    bit_clear!(doc = "Clear Interface Fatal Error Status", clear_interface_fatal_error, 27);
+
+    bit_get!(doc = "Interface Non-fatal Error Status", interface_non_fatal_error, 26);
+    bit_clear!(doc = "Clear Interface Non-fatal Error Status", clear_interface_non_fatal_error, 26);
+
+    bit_get!(doc = "Overflow Status", overflow, 24);
+    bit_clear!(doc = "Clear Overflow Status", clear_overflow, 24);
+
+    bit_get!(doc = "Incorrect Port Multiplier Status", incorrect_port_multiplier, 23);
+    bit_clear!(doc = "Clear Incorrect Port Multiplier Status", clear_incorrect_port_multiplier, 23);
+
+    bit_get!(doc = "PhyRdy Change Status", phy_ready, 22);
+
+    bit_get!(doc = "Device Mechanical Presence Status", device_mechanical_presence, 7);
+    bit_clear!(doc = "Clear Device Mechanical Presence Status", clear_device_mechanical_presence, 7);
+
+    bit_get!(doc = "Port Connect Change Status", port_connect_change, 6);
+
+    bit_get!(doc = "Descriptor Processed", descriptor_processed, 5);
+    bit_clear!(doc = "Clear Descriptor Processed", clear_descriptor_processed, 5);
+
+    bit_get!(doc = "Unknown FIS Interrupt", unknown_fis_interrupt, 4);
+
+    bit_get!(doc = "Received a Set Device Bits Interrupt", set_device_bit_interrupt, 3);
+    bit_clear!(doc = "Clear Set Device Bits Interrupt", clear_set_device_bit_interrupt, 3);
+
+    bit_get!(doc = "DMA Setup FIS Interrupt", dma_setup_fis_interrupt, 2);
+    bit_clear!(doc = "Clear DMA Setup FIS Interrupt", clear_dma_setup_fis_interrupt, 2);
+
+    bit_get!(doc = "PIO Setup FIS Interrupt", pio_setup_fis_interrupt, 1);
+    bit_clear!(doc = "Clear PIO Setup FIS Interrupt", clear_pio_setup_fis_interrupt, 1);
+
+    bit_get!(doc = "Device to Host Register FIS Interrupt", d2h_register_fis_interrupt, 0);
+    bit_clear!(doc = "Clear Device to Host Register FIS Interrupt", clear_d2h_register_fis_interrupt, 0);
+}
+
+#[derive(Debug)]
+pub struct InterruptEnable(u32);
+
+impl InterruptEnable {
+    bit_get!(doc = "Cold Presence Detect", cold_presence_detect, 31);
+    bit_set!(doc = "Enable Cold Presence Detect", enable_cold_presence_detect, 31);
+    bit_clear!(doc = "Disable Cold Presence Detect", disable_cold_presence_detect, 31);
+
+    bit_get!(doc = "Task File Error", task_file_error, 30);
+    bit_set!(doc = "Enable Task File Error", enable_task_file_error, 30);
+    bit_clear!(doc = "Disable Task File Error", disable_task_file_error, 30);
+
+    bit_get!(doc = "Host Bus Fatal Error", host_bus_fatal_error, 29);
+    bit_set!(doc = "Enable Host Bus Fatal Error", enable_host_bus_fatal_error, 29);
+    bit_clear!(doc = "Disable Host Bus Fatal Error", disable_host_bus_fatal_error, 29);
+
+    bit_get!(doc = "Host Bus data Error", host_bus_data_error, 28);
+    bit_set!(doc = "Enable Host Bus data Error", enable_host_bus_data_error, 28);
+    bit_clear!(doc = "Disable Host Bus data Error", disable_host_bus_data_error, 28);
+
+    bit_get!(doc = "Interface Fatal Error", interface_fatal_error, 27);
+    bit_set!(doc = "Enable Interface Fatal Error", enable_interface_fatal_error, 27);
+    bit_clear!(doc = "Disable Interface Fatal Error", disable_interface_fatal_error, 27);
+
+    bit_get!(doc = "Interface Non-fatal Error", interface_non_fatal_error, 26);
+    bit_set!(doc = "Enable Interface Non-fatal Error", enable_interface_non_fatal_error, 26);
+    bit_clear!(doc = "Disable Interface Non-fatal Error", disable_interface_non_fatal_error, 26);
+
+    bit_get!(doc = "Overflow", overflow, 24);
+    bit_set!(doc = "Enable Overflow", enable_overflow, 24);
+    bit_clear!(doc = "Disable Overflow", disable_overflow, 24);
+
+    bit_get!(doc = "Incorrect Port Multiplier", incorrect_port_multiplier, 23);
+    bit_set!(doc = "Enable Incorrect Port Multiplier", enable_incorrect_port_multiplier, 23);
+    bit_clear!(doc = "Disable Incorrect Port Multiplier", disable_incorrect_port_multiplier, 23);
+
+    bit_get!(doc = "PyRdy Change Interrupt", pyrdy_change_irq, 22);
+    bit_set!(doc = "Enable PyRdy Change Interrupt", enable_pyrdy_change_irq, 22);
+    bit_clear!(doc = "Disable PyRdy Change Interrupt", disable_pyrdy_change_irq, 22);
+
+    bit_get!(doc = "Device Mechanical Presence", device_mechanical_presence, 7);
+    bit_set!(doc = "Enable Device Mechanical Presence", enable_device_mechanical_presence, 7);
+    bit_clear!(doc = "Disable Device Mechanical Presence", disable_device_mechanical_presence, 7);
+
+    bit_get!(doc = "Port Change Interrupt", port_change_irq, 6);
+    bit_set!(doc = "Enable Port Change Interrupt", enable_port_change_irq, 6);
+    bit_clear!(doc = "Disable Port Change Interrupt", disable_port_change_irq, 6);
+
+    bit_get!(doc = "Descriptor Processed Interrupt", descriptor_processed, 5);
+    bit_set!(doc = "Enable Descriptor Processed Interrupt", enable_descriptor_processed, 5);
+    bit_clear!(doc = "Disable Descriptor Processed Interrupt", disable_descriptor_processed, 5);
+
+    bit_get!(doc = "Unknown FIS Interrupt", unknown_fis_irq, 4);
+    bit_set!(doc = "Enable Unknown FIS Interrupt", enable_unknown_fis_irq, 4);
+    bit_clear!(doc = "Disable Unknown FIS Interrupt", disable_unknown_fis_irq, 4);
+
+    bit_get!(doc = "Set Device Bits FIS Interrupt", device_bits_fis_irq, 3);
+    bit_set!(doc = "Enable Set Device Bits FIS Interrupt", enable_device_bits_fis_irq, 3);
+    bit_clear!(doc = "Disable Set Device Bits FIS Interrupt", disable_device_bits_fis_irq, 3);
+
+    bit_get!(doc = "DMA Setup FIS Interrupt", dma_setup_fis_irq, 2);
+    bit_set!(doc = "Enable DMA Setup FIS Interrupt", enable_dma_setup_fis_irq, 2);
+    bit_clear!(doc = "Disable DMA Setup FIS Interrupt", disable_dma_setup_fis_irq, 2);
+
+    bit_get!(doc = "PIO Setup FIS Interrupt", pio_setup_irq, 1);
+    bit_set!(doc = "Enable PIO Setup FIS Interrupt", enable_pio_setup_irq, 1);
+    bit_clear!(doc = "Disable PIO Setup FIS Interrupt", disable_pio_setup_irq, 1);
+
+    bit_get!(doc = "Device to host Register FIS Interrupt", d2h_register_fis_interrupt, 0);
+    bit_set!(doc = "Enable Device to host Register FIS Interrupt", enable_d2h_register_fis_interrupt, 0);
+    bit_clear!(doc = "Disable Device to host Register FIS Interrupt", disable_d2h_register_fis_interrupt, 0);
+}
+
+pub struct CommandAndStatus(u32);
+
+impl CommandAndStatus {
+
+    /// Interface Communication Control
+    pub fn icc(&self) -> u8 {
+        bits_get(self.0, 28, 31) as u8
+    }
+
+    /// Set Interface Communication Control
+    pub fn set_icc(&self) {
+        unreachable!();
+    }
+
+
+    bit_get!(doc = "Aggressive Slumber / Partial (ASP)", aggressive_slumber, 27);
+    bit_set!(doc = "Set Aggressive Slumber / Partial (ASP)", set_aggressive_slumber, 27);
+
+    bit_get!(doc = "Aggressive Link Power Management Enable (ALPE)", aggressive_link_power_mgmt, 26);
+    bit_set!(doc = "Set Aggressive Link Power Management Enable (ALPE)", set_aggressive_link_power_mgmt, 26);
+
+    bit_get!(doc = "Drive LED on ATAPI Enable (DLAE)", drive_led_on_atapi, 25);
+    bit_set!(doc = "Set Drive LED on ATAPI Enable (DLAE)", set_drive_led_on_atapi, 25);
+
+    bit_get!(doc = "Device is ATAPI", device_is_atapi, 24);
+    bit_set!(doc = "Set Device is ATAPI", set_device_is_atapi, 24);
+
+    bit_get!(doc = "Automatic Partial to Slumber Transitions Enabled (APSTE)", automatic_partial_slumber_transitions, 23);
+    bit_set!(doc = "Set Automatic Partial to Slumber Transitions Enabled (APSTE)", set_automatic_partial_slumber_transitions, 23);
+
+    bit_get!(doc = "FIS-based Switching Capable Port", fis_switching_port, 22);
+    bit_get!(doc = "External SATA Port", external_sata_port, 21);
+    bit_get!(doc = "Cold Presence Detection", cold_presence_detection, 20);
+    bit_get!(doc = "Mechanical Presence Switch Attached to Port", mechanical_presence_switch_attached, 19);
+    bit_get!(doc = "Hot Plug Capable Port", hot_plug_capable_port, 18);
+
+    bit_get!(doc = "Port Multiplier Attached", port_multiplier_attached, 17);
+    bit_set!(doc = "Set Port Multiplier Attached", set_port_multiplier_attached, 17);
+    bit_clear!(doc = "Clear Port Multiplier Attached", clear_port_multiplier_attached, 17);
+
+    bit_get!(doc = "Cold Presence State", cold_presence, 16);
+    bit_get!(doc = "Command List Running", command_list_running, 15);
+    bit_get!(doc = "FIS Receive Running", fis_receive_running, 14);
+    bit_get!(doc = "Mechanical Presence Switch State", mechanical_presence_switch_state, 13);
+
+    /// Current Command Slot
+    pub fn ccs(&self) -> u8 {
+        bits_get(self.0, 8, 12) as u8
+    }
+
+    bit_get!(doc = "FIS Receive", fis_receive, 4);
+    bit_set!(doc = "Set FIS Receive", enable_fis_receive, 4);
+    bit_clear!(doc = "Clear FIS Receive", disable_fis_receive, 4);
+
+    bit_get!(doc = "Command List Override", command_list_override, 3);
+    bit_set!(doc = "Set Command List Override", clear_command_list_override, 3);
+
+    bit_get!(doc = "Power On Device", power_on_device, 2);
+    bit_set!(doc = "Set Power On Device", enable_power_on_device, 2);
+    bit_clear!(doc = "Clear Power On Device", disable_power_on_device, 2);
+
+    bit_get!(doc = "Spin-Up Device", spin_up_device, 1);
+    bit_set!(doc = "Set Spin-Up Device", enable_spin_up_device, 1);
+    bit_clear!(doc = "Clear Spin-Up Device", disable_spin_up_device, 1);
+
+    bit_get!(doc = "Is Started?", is_started, 0);
+    bit_set!(doc = "Set Start", start, 0);
+    bit_clear!(doc = "Stop", stop, 0);
+}
+
+#[derive(Debug)]
+pub struct TaskFileData(u32);
+
+impl TaskFileData {
+    pub fn error(&self) -> u8 {
+        bits_get(self, 8, 15) as u8
+    }
+
+    pub fn status(&self) -> u8 {
+        bits_get(self, 0, 7) as u8
+    }
+}
+
+#[derive(Debug)]
+pub struct PortSignature(u32);
+
+impl PortSignature {
+    pub fn lba(&self) -> u32 {
+        bits_get(self, 8, 31) << 8
+    }
+
+    pub fn sectors(&self) -> u8 {
+        bits_get(self, 0, 7) as u8
+    }
+}
+
+#[derive(Debug)]
+pub struct SerialAtaStatus(u32);
+
+impl SerialAtaStatus {
+    pub fn power_management(&self) -> u8 {
+        // TOOD: enum
+        bits_get(self, 8, 11) as u8
+    }
+
+    pub fn current_speed(&self) -> u8 {
+        // TODO: enum
+        bits_get(self, 4, 7) as u8
+    }
+
+    pub fn device_detection(&self) -> u8 {
+        // TODO: enum
+        bits_get(self, 0, 3) as u8
+    }
+}
+
+
+#[derive(Debug)]
+pub struct SerialAtaControl(u32);
+
+impl SerialAtaControl {
+    pub fn allowed_ipm_transitions(&self) -> u8 {
+        // TODO: Should be enum
+        bits_get(self, 8, 11) as u8
+    }
+
+    pub fn set_allowed_ipm_transitions(&self, transitions: u8) {
+        unreachable!();
+    }
+
+    pub fn allowed_speed(&self) -> u8 {
+        // TODO: Should be enum
+        bits_get(self, 4, 7) as u8
+    }
+
+    pub fn set_allowed_speed(&self, speed: u8) {
+        unreachable!();
+    }
+
+    pub fn device_detection_init(&self) -> u8 {
+        bits_get(self, 0, 3) as u8
+    }
+
+    pub fn set_device_detection_init(&self, mode: u8) {
+        unreachable!();
+    }
+}
+
+#[derive(Debug)]
+pub struct SerialAtaError(u32);
+
+impl SerialAtaError {
+
+    pub fn diagnostics(&self) -> u16 {
+        bits_get(self, 16, 31) as u16
+    }
+
+    pub fn error(&self) -> u16 {
+        bits_get(self, 0, 15) as u16
+    }
+
+}
+
+#[derive(Debug)]
+pub struct SerialAtaActive(u32);
+
+impl SerialAtaActive {
+
+    pub fn device_status(&self, slot: u8) -> bool {
+        is_bit_set!(self.0, slot)
+    }
+
+    pub fn set_device_status(&self, slot: u8) {
+        unreachable!();
+    }
+
+}
+
+
+#[derive(Debug)]
+pub struct CommandsIssued(u32);
+
+impl CommandsIssued {
+
+    pub fn commands_issued(&self, slot: u8) -> bool {
+        is_bit_set!(self.0, slot)
+    }
+
+    pub fn set_commands_issued(&self, slot: u8) {
+        unreachable!();
+    }
+
+}
+
+#[derive(Debug)]
+pub struct SerialAtaNotification(u32);
+
+impl SerialAtaNotification {
+}
+
+
+#[derive(Debug)]
+pub struct FisSwitchingControl(u32);
+
+impl FisSwitchingControl {
+
+}
+
+#[derive(Debug)]
+pub struct DeviceSleep(u32);
+
+impl DeviceSleep {
+
+}
+
 
 #[derive(Debug)]
 pub enum HbaPortType {
