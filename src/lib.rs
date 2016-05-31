@@ -1,20 +1,4 @@
-#![feature(concat_idents)]
-
-extern crate mmap;
-extern crate uio;
-//extern crate pci;
-
 use std::fmt;
-//use std::ops;
-use mmap::*;
-use uio::linux;
-
-const HBA_SIG_ATA: u32 = 0x00000101;
-const HBA_SIG_ATAPI: u32 = 0xEB140101;
-const HBA_SIG_PM: u32 = 0x96690101;
-const HBA_SIG_SEMB: u32 = 0xC33C0101;
-
-const HBA_SSTS_PRESENT: u32 = 0x3;
 
 macro_rules! is_bit_set {
     ($field:expr, $bit:expr) => (
@@ -315,6 +299,25 @@ pub struct Hba {
     pub ports: [HbaPort; 32],
 }
 
+impl Hba {
+    pub fn get_port(&self, port: usize) -> &HbaPort {
+        assert!(port < 32);
+        assert!(port < self.cap.ports() as usize + 1);
+        assert!(self.pi.is_implemented(port));
+
+        &self.ports[port]
+    }
+
+    pub fn get_port_mut(&mut self, port: usize) -> &mut HbaPort {
+        assert!(port < 32);
+        assert!(port < self.cap.ports() as usize + 1);
+        assert!(self.pi.is_implemented(port));
+
+        &mut self.ports[port]
+    }
+
+}
+
 impl fmt::Debug for Hba {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         try!(write!(f, "HBA:\n"));
@@ -371,6 +374,61 @@ pub struct HbaPort {
     pub rsv1: [u32; 10],
     /// Vendor specific (0x70 - 0x7F)
     pub vendor: [u32; 4],
+}
+
+const HBA_SSTS_PRESENT: u8 = 0x3;
+const HBA_SIG_ATA: u32 = 0x00000101;
+const HBA_SIG_ATAPI: u32 = 0xEB140101;
+const HBA_SIG_PM: u32 = 0x96690101;
+const HBA_SIG_SEMB: u32 = 0xC33C0101;
+
+#[derive(Debug)]
+pub enum HbaPortType {
+    None,
+    SATA,
+    SATAPI,
+    PM,
+    SEMB,
+    Unknown(u32),
+}
+
+impl HbaPort {
+
+    pub fn start(&mut self) {
+        while self.cmd.command_list_running() {}
+        self.cmd.start();
+    }
+
+    pub fn stop(&mut self) {
+        self.cmd.stop();
+        while self.cmd.command_list_running() {}
+    }
+
+    pub fn reset(&mut self) {
+        self.stop();
+
+        self.sctl.set_device_detection_init(0x1);
+        // TODO: wait 1 ms
+        self.sctl.set_device_detection_init(0x3);
+        self.serr.0 = u32::max_value();
+
+        self.start();
+    }
+
+    pub fn probe(&self) -> HbaPortType {
+        if self.ssts.device_detection() == HBA_SSTS_PRESENT {
+            match self.sig.0 {
+                HBA_SIG_ATA => HbaPortType::SATA,
+                HBA_SIG_ATAPI => HbaPortType::SATAPI,
+                HBA_SIG_PM => HbaPortType::PM,
+                HBA_SIG_SEMB => HbaPortType::SEMB,
+                _ => HbaPortType::Unknown(self.sig.0),
+            }
+        } else {
+            HbaPortType::None
+        }
+    }
+
 }
 
 #[derive(Debug)]
@@ -499,6 +557,7 @@ impl InterruptEnable {
     bit_clear!(doc = "Disable Device to host Register FIS Interrupt", disable_d2h_register_fis_interrupt, 0);
 }
 
+#[derive(Debug)]
 pub struct CommandAndStatus(u32);
 
 impl CommandAndStatus {
@@ -512,7 +571,6 @@ impl CommandAndStatus {
     pub fn set_icc(&self) {
         unreachable!();
     }
-
 
     bit_get!(doc = "Aggressive Slumber / Partial (ASP)", aggressive_slumber, 27);
     bit_set!(doc = "Set Aggressive Slumber / Partial (ASP)", set_aggressive_slumber, 27);
@@ -540,7 +598,7 @@ impl CommandAndStatus {
     bit_clear!(doc = "Clear Port Multiplier Attached", clear_port_multiplier_attached, 17);
 
     bit_get!(doc = "Cold Presence State", cold_presence, 16);
-    bit_get!(doc = "Command List Running", command_list_running, 15);
+    bit_get!(doc = "Command List Running (CR)", command_list_running, 15);
     bit_get!(doc = "FIS Receive Running", fis_receive_running, 14);
     bit_get!(doc = "Mechanical Presence Switch State", mechanical_presence_switch_state, 13);
 
@@ -697,6 +755,18 @@ impl CommandsIssued {
 pub struct SerialAtaNotification(u32);
 
 impl SerialAtaNotification {
+
+    /// PM Notify (PMN)
+    ///
+    /// This field indicates whether a particular device with the corresponding
+    /// PM Port number issued a Set Device Bits FIS to the host with the Notification bit set.
+    pub fn pm_notify(&self, port: u8) -> bool {
+        is_bit_set!(self.0, port)
+    }
+
+    pub fn clear_pm_notify(&mut self, port: u8) {
+        self.0 |= 1 << port;
+    }
 }
 
 
@@ -705,6 +775,31 @@ pub struct FisSwitchingControl(u32);
 
 impl FisSwitchingControl {
 
+    /// Device With Error
+    pub fn device_with_error(&self) -> u8 {
+        bits_get(self.0, 16, 19) as u8
+    }
+
+    /// Active Device Optimization
+    pub fn active_device_optimization(&self) -> u8 {
+        bits_get(self.0, 12, 15) as u8
+    }
+
+    /// Device To Issue
+    pub fn device_to_issue(&self) -> u8 {
+        bits_get(self.0, 8, 11) as u8
+    }
+
+    pub fn set_device_to_issue(&self, port: u8) {
+        unreachable!()
+    }
+
+    bit_get!(doc = "Single Device Error", single_device_error, 2);
+    bit_set!(doc = "Device Error Clear", device_clear_error, 1);
+
+    bit_get!(doc = "Enabled", is_enabled, 0);
+    bit_set!(doc = "Enable FIS-based switching", enable, 0);
+    bit_clear!(doc = "Disable FIS-based switching", disable, 0);
 }
 
 #[derive(Debug)]
@@ -712,46 +807,29 @@ pub struct DeviceSleep(u32);
 
 impl DeviceSleep {
 
-}
-
-
-#[derive(Debug)]
-pub enum HbaPortType {
-    None,
-    Unknown(u32),
-    SATA,
-    SATAPI,
-    PM,
-    SEMB,
-}
-
-
-impl HbaPort {
-    pub fn probe(&self) -> HbaPortType {
-        if self.ssts == HBA_SSTS_PRESENT {
-            let sig = self.sig;
-            match sig {
-                HBA_SIG_ATA => HbaPortType::SATA,
-                HBA_SIG_ATAPI => HbaPortType::SATAPI,
-                HBA_SIG_PM => HbaPortType::PM,
-                HBA_SIG_SEMB => HbaPortType::SEMB,
-                _ => HbaPortType::Unknown(sig),
-            }
-        } else {
-            HbaPortType::None
-        }
+    /// DITO Multiplier
+    pub fn dito_multiplier(&self) -> u8 {
+        bits_get(self.0, 25, 28) as u8
     }
-}
 
-pub struct AhciDisk {
-    pub bar5: MemoryMap,
-    pub dev: linux::UioDevice,
-}
-
-impl AhciDisk {
-    pub fn from_uio(uio_num: usize) -> AhciDisk {
-        let dev = linux::UioDevice::new(uio_num).unwrap();
-        let bar = dev.map_resource(5).unwrap();
-        AhciDisk { bar5: bar, dev: dev }
+    /// Device Sleep Idle Timeout (DITO)
+    pub fn dito(&self) -> u8 {
+        bits_get(self.0, 15, 24) as u8
     }
+
+    /// Minimum Device Sleep Assertion Time (MDAT)
+    pub fn mdat(&self) -> u8 {
+        bits_get(self.0, 10, 14) as u8
+    }
+
+    /// Device Sleep Exit Timeout (DETO)
+    pub fn deto(&self) -> u8 {
+        bits_get(self.0, 2, 9) as u8
+    }
+
+    bit_get!(doc = "Device Sleep Present (DSP)", has_device_sleep, 1);
+
+    bit_get!(doc = "Aggressive Device Sleep (ADSE)", aggressive_device_sleep, 0);
+    bit_set!(doc = "Aggressive Device Sleep Enable (ADSE)", enable_aggressive_device_sleep, 0);
+    bit_clear!(doc = "Aggressive Device Sleep Disable (ADSE)", disable_aggressive_device_sleep, 0);
 }
