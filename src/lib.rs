@@ -352,21 +352,23 @@ pub struct HbaPort {
     /// signature (0x24)
     pub sig: PortSignature,
     /// SATA status (SCR0:SStatus) (0x28)
-    pub ssts: u32,
+    pub ssts: SerialAtaStatus,
     /// SATA control (SCR2:SControl) (0x2C)
-    pub sctl: u32,
+    pub sctl: SerialAtaControl,
     /// SATA error (SCR1:SError) (0x30)
-    pub serr: u32,
+    pub serr: SerialAtaError,
     /// SATA active (SCR3:SActive) (0x34)
-    pub sact: u32,
+    pub sact: SerialAtaActive,
     /// command issue (0x38)
-    pub ci: u32,
+    pub ci: CommandsIssued,
     /// SATA notification (SCR4:SNotification) (0x3C)
-    pub sntf: u32,
+    pub sntf: SerialAtaNotification,
     /// FIS-based switch control (0x40)
-    pub fbs: u32,
-    /// Reserved (0x44 - 0x6F)
-    pub rsv1: [u32; 11],
+    pub fbs: FisSwitchingControl,
+    /// Port x Device Sleep (0x44)
+    pub devslp: DeviceSleep,
+    /// Reserved (0x48 - 0x6F)
+    pub rsv1: [u32; 10],
     /// Vendor specific (0x70 - 0x7F)
     pub vendor: [u32; 4],
 }
@@ -572,11 +574,11 @@ pub struct TaskFileData(u32);
 
 impl TaskFileData {
     pub fn error(&self) -> u8 {
-        bits_get(self, 8, 15) as u8
+        bits_get(self.0, 8, 15) as u8
     }
 
     pub fn status(&self) -> u8 {
-        bits_get(self, 0, 7) as u8
+        bits_get(self.0, 0, 7) as u8
     }
 }
 
@@ -585,11 +587,11 @@ pub struct PortSignature(u32);
 
 impl PortSignature {
     pub fn lba(&self) -> u32 {
-        bits_get(self, 8, 31) << 8
+        bits_get(self.0, 8, 31) << 8
     }
 
     pub fn sectors(&self) -> u8 {
-        bits_get(self, 0, 7) as u8
+        bits_get(self.0, 0, 7) as u8
     }
 }
 
@@ -599,17 +601,17 @@ pub struct SerialAtaStatus(u32);
 impl SerialAtaStatus {
     pub fn power_management(&self) -> u8 {
         // TOOD: enum
-        bits_get(self, 8, 11) as u8
+        bits_get(self.0, 8, 11) as u8
     }
 
     pub fn current_speed(&self) -> u8 {
         // TODO: enum
-        bits_get(self, 4, 7) as u8
+        bits_get(self.0, 4, 7) as u8
     }
 
     pub fn device_detection(&self) -> u8 {
         // TODO: enum
-        bits_get(self, 0, 3) as u8
+        bits_get(self.0, 0, 3) as u8
     }
 }
 
@@ -620,7 +622,7 @@ pub struct SerialAtaControl(u32);
 impl SerialAtaControl {
     pub fn allowed_ipm_transitions(&self) -> u8 {
         // TODO: Should be enum
-        bits_get(self, 8, 11) as u8
+        bits_get(self.0, 8, 11) as u8
     }
 
     pub fn set_allowed_ipm_transitions(&self, transitions: u8) {
@@ -629,7 +631,7 @@ impl SerialAtaControl {
 
     pub fn allowed_speed(&self) -> u8 {
         // TODO: Should be enum
-        bits_get(self, 4, 7) as u8
+        bits_get(self.0, 4, 7) as u8
     }
 
     pub fn set_allowed_speed(&self, speed: u8) {
@@ -637,7 +639,7 @@ impl SerialAtaControl {
     }
 
     pub fn device_detection_init(&self) -> u8 {
-        bits_get(self, 0, 3) as u8
+        bits_get(self.0, 0, 3) as u8
     }
 
     pub fn set_device_detection_init(&self, mode: u8) {
@@ -651,11 +653,11 @@ pub struct SerialAtaError(u32);
 impl SerialAtaError {
 
     pub fn diagnostics(&self) -> u16 {
-        bits_get(self, 16, 31) as u16
+        bits_get(self.0, 16, 31) as u16
     }
 
     pub fn error(&self) -> u16 {
-        bits_get(self, 0, 15) as u16
+        bits_get(self.0, 0, 15) as u16
     }
 
 }
