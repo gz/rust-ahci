@@ -1,4 +1,6 @@
 use std::fmt;
+use std::time::Duration;
+use std::thread;
 
 macro_rules! is_bit_set {
     ($field:expr, $bit:expr) => (
@@ -28,11 +30,10 @@ macro_rules! bit_clear {
     ($doc:meta, $fun:ident, $bit:expr) => (
         #[$doc]
         pub fn $fun(&mut self) {
-            self.0 |= 0 << $bit;
+            self.0 &= !(1 << $bit);
         }
     )
 }
-
 
 fn bits_get(r: u32, from: usize, to: usize) -> u32 {
     assert!(from <= 31);
@@ -47,7 +48,63 @@ fn bits_get(r: u32, from: usize, to: usize) -> u32 {
     (r & mask) >> from
 }
 
-#[derive(Debug)]
+fn bits_set(r: &mut u32, from: usize, to: usize, bits: u32) {
+    assert!(from <= 31);
+    assert!(to <= 31);
+    assert!(from <= to);
+
+    let mask = match to {
+        31 => u32::max_value(),
+        _ => ((1 << (to+1)) - 1) & !((1 << from) - 1),
+    };
+
+    *r = (*r & !mask) | ((bits << from) & mask);
+}
+
+#[test]
+fn bits_set_from_to() {
+    for from in 0..32 {
+        for to in from..32 {
+            let mut r = 0;
+            let all_ones: usize = (1 << (to - from + 1)) - 1;
+
+            bits_set(&mut r, from, to, all_ones as u32);
+
+            for check in 0..32 {
+                if check >= from && check <= to {
+                    assert!(is_bit_set!(r, check));
+                }
+                else {
+                    assert!(!is_bit_set!(r, check));
+                }
+            }
+
+            assert!(bits_get(r, from, to) == all_ones as u32);
+        }
+    }
+}
+
+fn wait_until<F>(cond_fn: F, max_wait: Duration) -> Result<(), DevError>
+    where F: Fn() -> bool {
+
+    use std::time::SystemTime;
+    let now = SystemTime::now();
+
+    while !cond_fn() {
+        match now.elapsed() {
+            Ok(waited) => if waited > max_wait {
+                return Err(DevError::TimoutReached);
+            },
+            Err(e) => panic!("SystemTime error: {}", e),
+        }
+
+        // Wait a little longer...
+        std::thread::sleep(Duration::from_millis(1));
+    }
+
+    Ok(())
+}
+
 pub struct HBACapability(pub u32);
 
 impl HBACapability {
@@ -69,12 +126,12 @@ impl HBACapability {
     bit_get!(doc = "Enclosure Management Supported", has_enclosure_mgmt, 6);
     bit_get!(doc = "Supports External SATA", has_external_stat, 5);
 
-    /// Number of Command Slots
+    /// Number of Command Slots (NCS)
     pub fn command_slots(&self) -> u32 {
         bits_get(self.0, 8, 12)
     }
 
-    /// Interface Speed Support
+    /// Interface Speed Support (ISS)
     pub fn interface_speed(&self) -> u32 {
         bits_get(self.0, 20, 23)
     }
@@ -85,12 +142,38 @@ impl HBACapability {
     }
 }
 
+impl fmt::Debug for HBACapability {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        try!(write!(f, "HBACapability:\n"));
+        try!(write!(f, "\tSupports 64-bit Addressing: {}\n", self.has_64bit_addressing()));
+        try!(write!(f, "\tSupports Native Command Queuing: {}\n", self.has_native_command_queing()));
+        try!(write!(f, "\tSupports SNotification Register: {}\n", self.has_snotification_register()));
+        try!(write!(f, "\tSupports Mechanical Presence Switch: {}\n", self.has_mechanical_presence_switch()));
+        try!(write!(f, "\tSupports Staggered Spin-up: {}\n", self.has_staggered_spin_up()));
+        try!(write!(f, "\tSupports Aggressive Link Power Management: {}\n", self.has_aggressive_link_power_mgmt()));
+        try!(write!(f, "\tSupports Activity LED: {}\n", self.has_activity_led()));
+        try!(write!(f, "\tSupports Command List Override: {}\n", self.has_command_list_override()));
+        try!(write!(f, "\tSupports AHCI mode only: {}\n", self.has_ahci_mode_only()));
+        try!(write!(f, "\tSupports Port Multiplier: {}\n", self.has_port_multiplier()));
+        try!(write!(f, "\tFIS-based Switching Supported: {}\n", self.has_fis_switching()));
+        try!(write!(f, "\tPIO Multiple DRQ Block: {}\n", self.has_multiple_drq_blocks()));
+        try!(write!(f, "\tSlumber State Capable: {}\n", self.has_slumber_state()));
+        try!(write!(f, "\tPartial State Capable: {}\n", self.has_partial_state()));
+        try!(write!(f, "\tCommand Completion Coalescing Supported: {}\n", self.has_cmd_completion_coalescing()));
+        try!(write!(f, "\tEnclosure Management Supported: {}\n", self.has_enclosure_mgmt()));
+        try!(write!(f, "\tSupports External SATA: {}\n", self.has_external_stat()));
+        try!(write!(f, "\tNumber of Command Slots: {}\n", self.command_slots()));
+        try!(write!(f, "\tInterface Speed Support: {}\n", self.interface_speed()));
+        write!(f, "\tPorts: {}\n", self.ports())
+    }
+}
+
 #[derive(Debug)]
 pub struct GlobalHBAControl(u32);
 
 impl GlobalHBAControl {
-    bit_get!(doc = "AHCI Enable", ae, 31);
-    bit_set!(doc = "AHCI Enable", set_ae, 31);
+    bit_get!(doc = "AHCI Enable", ahci, 31);
+    bit_set!(doc = "AHCI Enable", set_ahci, 31);
 }
 
 #[derive(Debug)]
@@ -392,24 +475,42 @@ pub enum HbaPortType {
     Unknown(u32),
 }
 
+#[derive(Debug)]
+enum DevError {
+    TimoutReached
+}
+
 impl HbaPort {
 
     pub fn start(&mut self) {
-        while self.cmd.command_list_running() {}
+        wait_until(|| {
+            !self.cmd.command_list_running()
+        }, Duration::from_millis(500)).unwrap(); // TODO: duration
+
         self.cmd.start();
     }
 
     pub fn stop(&mut self) {
         self.cmd.stop();
-        while self.cmd.command_list_running() {}
+        self.cmd.disable_fis_receive();
+
+        wait_until(|| {
+            !self.cmd.command_list_running()
+        }, Duration::from_millis(500)).unwrap();
+
+        wait_until(|| {
+            !self.cmd.fis_receive()
+        }, Duration::from_millis(500)).unwrap();
     }
 
     pub fn reset(&mut self) {
         self.stop();
 
         self.sctl.set_device_detection_init(0x1);
-        // TODO: wait 1 ms
-        self.sctl.set_device_detection_init(0x3);
+        thread::sleep(Duration::from_millis(1));
+        self.sctl.set_device_detection_init(0x0);
+        while self.ssts.device_detection() != 0x3 {}
+
         self.serr.0 = u32::max_value();
 
         self.start();
@@ -599,7 +700,7 @@ impl CommandAndStatus {
 
     bit_get!(doc = "Cold Presence State", cold_presence, 16);
     bit_get!(doc = "Command List Running (CR)", command_list_running, 15);
-    bit_get!(doc = "FIS Receive Running", fis_receive_running, 14);
+    bit_get!(doc = "FIS Receive Running (FR)", fis_receive_running, 14);
     bit_get!(doc = "Mechanical Presence Switch State", mechanical_presence_switch_state, 13);
 
     /// Current Command Slot
@@ -607,7 +708,7 @@ impl CommandAndStatus {
         bits_get(self.0, 8, 12) as u8
     }
 
-    bit_get!(doc = "FIS Receive", fis_receive, 4);
+    bit_get!(doc = "FIS Receive (FRE)", fis_receive, 4);
     bit_set!(doc = "Set FIS Receive", enable_fis_receive, 4);
     bit_clear!(doc = "Clear FIS Receive", disable_fis_receive, 4);
 
@@ -622,7 +723,7 @@ impl CommandAndStatus {
     bit_set!(doc = "Set Spin-Up Device", enable_spin_up_device, 1);
     bit_clear!(doc = "Clear Spin-Up Device", disable_spin_up_device, 1);
 
-    bit_get!(doc = "Is Started?", is_started, 0);
+    bit_get!(doc = "Is Started? (ST)", is_started, 0);
     bit_set!(doc = "Set Start", start, 0);
     bit_clear!(doc = "Stop", stop, 0);
 }
@@ -700,8 +801,8 @@ impl SerialAtaControl {
         bits_get(self.0, 0, 3) as u8
     }
 
-    pub fn set_device_detection_init(&self, mode: u8) {
-        unreachable!();
+    pub fn set_device_detection_init(&mut self, mode: u8) {
+        bits_set(&mut self.0, 0, 3, mode as u32);
     }
 }
 
@@ -745,8 +846,8 @@ impl CommandsIssued {
         is_bit_set!(self.0, slot)
     }
 
-    pub fn set_commands_issued(&self, slot: u8) {
-        unreachable!();
+    pub fn set_commands_issued(&mut self, slot: u8) {
+        self.0 |= 1 << slot;
     }
 
 }

@@ -32,10 +32,52 @@ impl AhciDisk {
 pub fn main() {
     println!("Hello from AHCI");
     let mut disk = AhciDisk::from_uio(0);
-    let mut hba = disk.get_hba_mut();
-    println!("ports: {:?}", hba.pi);
+    let mut hba: &mut Hba = disk.get_hba_mut();
+    // Determine how many command slots the HBA supports, by reading CAP.NCS.
+    let ncs = hba.cap.command_slots();
+
+    println!("{:?}", hba.cap);
+    println!("before set ahci {:?}", hba.ghc);
+    hba.ghc.set_ahci();
+    println!("after set ahci {:?}", hba.ghc);
+
+    println!("Implemented ports: {:?}", hba.pi);
+    for i in 0..31 {
+        if hba.pi.is_implemented(i) {
+            // Page 112:
+            let mut port = hba.get_port_mut(0);
+            println!("Port {}: {:?}", i, port.probe());
+            port.stop();
+
+            // If PxCMD.ST, PxCMD.CR, PxCMD.FRE and
+            // PxCMD.FR are all cleared, the port is in an idle state.
+            assert!(!port.cmd.command_list_running());
+            assert!(!port.cmd.fis_receive());
+            assert!(!port.cmd.fis_receive_running());
+            assert!(!port.cmd.is_started());
+
+
+            // For each implemented port, system software shall allocate memory for
+            // and program: PxCLB PxFB
+            //println!("port.clb {:?}", port.clb);
+            //println!("port.fb {:?}", port.fb);
+
+            // mmap 256 bytes for port.fb
+            // mmap 1024 bytes for port.clb
+
+            port.clb = 0x0;
+            port.fb = 0x0;
+
+            //port.reset();
+        }
+    }
 
     let mut port = hba.get_port_mut(0);
-    println!("{:?}", port.probe());
-    port.reset();
+    for i in 0..31 {
+        if !port.ci.commands_issued(i) {
+            println!("Found free slot: {:?}", i);
+
+        }
+    }
+
 }
