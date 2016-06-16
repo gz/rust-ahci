@@ -1,130 +1,34 @@
+#[macro_use]
+extern crate driverkit;
+
 use std::fmt;
-use std::time::Duration;
-use std::thread;
+use std::mem;
+use std::thread; // sleep()
+use std::time::Duration; // sleep()
 
-macro_rules! is_bit_set {
-    ($field:expr, $bit:expr) => (
-        $field & (1 << $bit) > 0
-    )
-}
-
-macro_rules! bit_get {
-    ($doc:meta, $fun:ident, $bit:expr) => (
-        #[$doc]
-        pub fn $fun(&self) -> bool {
-            is_bit_set!(self.0, $bit)
-        }
-    )
-}
-
-macro_rules! bit_set {
-    ($doc:meta, $fun:ident, $bit:expr) => (
-        #[$doc]
-        pub fn $fun(&mut self) {
-            self.0 |= 1 << $bit;
-        }
-    )
-}
-
-macro_rules! bit_clear {
-    ($doc:meta, $fun:ident, $bit:expr) => (
-        #[$doc]
-        pub fn $fun(&mut self) {
-            self.0 &= !(1 << $bit);
-        }
-    )
-}
-
-fn bits_get(r: u32, from: usize, to: usize) -> u32 {
-    assert!(from <= 31);
-    assert!(to <= 31);
-    assert!(from <= to);
-
-    let mask = match to {
-        31 => u32::max_value(),
-        _ => (1 << (to+1)) - 1,
-    };
-
-    (r & mask) >> from
-}
-
-fn bits_set(r: &mut u32, from: usize, to: usize, bits: u32) {
-    assert!(from <= 31);
-    assert!(to <= 31);
-    assert!(from <= to);
-
-    let mask = match to {
-        31 => u32::max_value(),
-        _ => ((1 << (to+1)) - 1) & !((1 << from) - 1),
-    };
-
-    *r = (*r & !mask) | ((bits << from) & mask);
-}
-
-#[test]
-fn bits_set_from_to() {
-    for from in 0..32 {
-        for to in from..32 {
-            let mut r = 0;
-            let all_ones: usize = (1 << (to - from + 1)) - 1;
-
-            bits_set(&mut r, from, to, all_ones as u32);
-
-            for check in 0..32 {
-                if check >= from && check <= to {
-                    assert!(is_bit_set!(r, check));
-                }
-                else {
-                    assert!(!is_bit_set!(r, check));
-                }
-            }
-
-            assert!(bits_get(r, from, to) == all_ones as u32);
-        }
-    }
-}
-
-fn wait_until<F>(cond_fn: F, max_wait: Duration) -> Result<(), DevError>
-    where F: Fn() -> bool {
-
-    use std::time::SystemTime;
-    let now = SystemTime::now();
-
-    while !cond_fn() {
-        match now.elapsed() {
-            Ok(waited) => if waited > max_wait {
-                return Err(DevError::TimoutReached);
-            },
-            Err(e) => panic!("SystemTime error: {}", e),
-        }
-
-        // Wait a little longer...
-        std::thread::sleep(Duration::from_millis(1));
-    }
-
-    Ok(())
-}
+use driverkit::bitops::*;
+use driverkit::timedops::wait_until;
 
 pub struct HBACapability(pub u32);
 
 impl HBACapability {
-    bit_get!(doc = "Supports 64-bit Addressing", has_64bit_addressing, 31);
-    bit_get!(doc = "Supports Native Command Queuing", has_native_command_queing, 30);
-    bit_get!(doc = "Supports SNotification Register", has_snotification_register, 29);
-    bit_get!(doc = "Supports Mechanical Presence Switch", has_mechanical_presence_switch, 28);
-    bit_get!(doc = "Supports Staggered Spin-up", has_staggered_spin_up, 27);
-    bit_get!(doc = "Supports Aggressive Link Power Management", has_aggressive_link_power_mgmt, 26);
-    bit_get!(doc = "Supports Activity LED", has_activity_led, 25);
-    bit_get!(doc = "Supports Command List Override", has_command_list_override, 24);
-    bit_get!(doc = "Supports AHCI mode only", has_ahci_mode_only, 18);
-    bit_get!(doc = "Supports Port Multiplier", has_port_multiplier, 17);
-    bit_get!(doc = "FIS-based Switching Supported", has_fis_switching, 16);
-    bit_get!(doc = "PIO Multiple DRQ Block", has_multiple_drq_blocks, 15);
-    bit_get!(doc = "Slumber State Capable", has_slumber_state, 14);
-    bit_get!(doc = "Partial State Capable", has_partial_state, 13);
-    bit_get!(doc = "Command Completion Coalescing Supported", has_cmd_completion_coalescing, 7);
-    bit_get!(doc = "Enclosure Management Supported", has_enclosure_mgmt, 6);
-    bit_get!(doc = "Supports External SATA", has_external_stat, 5);
+    bit_get_fn!(doc = "Supports 64-bit Addressing", has_64bit_addressing, 31);
+    bit_get_fn!(doc = "Supports Native Command Queuing", has_native_command_queing, 30);
+    bit_get_fn!(doc = "Supports SNotification Register", has_snotification_register, 29);
+    bit_get_fn!(doc = "Supports Mechanical Presence Switch", has_mechanical_presence_switch, 28);
+    bit_get_fn!(doc = "Supports Staggered Spin-up", has_staggered_spin_up, 27);
+    bit_get_fn!(doc = "Supports Aggressive Link Power Management", has_aggressive_link_power_mgmt, 26);
+    bit_get_fn!(doc = "Supports Activity LED", has_activity_led, 25);
+    bit_get_fn!(doc = "Supports Command List Override", has_command_list_override, 24);
+    bit_get_fn!(doc = "Supports AHCI mode only", has_ahci_mode_only, 18);
+    bit_get_fn!(doc = "Supports Port Multiplier", has_port_multiplier, 17);
+    bit_get_fn!(doc = "FIS-based Switching Supported", has_fis_switching, 16);
+    bit_get_fn!(doc = "PIO Multiple DRQ Block", has_multiple_drq_blocks, 15);
+    bit_get_fn!(doc = "Slumber State Capable", has_slumber_state, 14);
+    bit_get_fn!(doc = "Partial State Capable", has_partial_state, 13);
+    bit_get_fn!(doc = "Command Completion Coalescing Supported", has_cmd_completion_coalescing, 7);
+    bit_get_fn!(doc = "Enclosure Management Supported", has_enclosure_mgmt, 6);
+    bit_get_fn!(doc = "Supports External SATA", has_external_stat, 5);
 
     /// Number of Command Slots (NCS)
     pub fn command_slots(&self) -> u32 {
@@ -172,8 +76,8 @@ impl fmt::Debug for HBACapability {
 pub struct GlobalHBAControl(u32);
 
 impl GlobalHBAControl {
-    bit_get!(doc = "AHCI Enable", ahci, 31);
-    bit_set!(doc = "AHCI Enable", set_ahci, 31);
+    bit_get_fn!(doc = "AHCI Enable", ahci, 31);
+    bit_set_fn!(doc = "AHCI Enable", set_ahci, 31);
 }
 
 #[derive(Debug)]
@@ -254,9 +158,9 @@ impl CommandCompletionControl {
         unreachable!()
     }
 
-    bit_get!(doc = "Is CCC enabled?", enabled, 0);
-    bit_set!(doc = "Enable CCC", enable, 0);
-    bit_clear!(doc = "Disable CCC", disable, 0);
+    bit_get_fn!(doc = "Is CCC enabled?", enabled, 0);
+    bit_set_fn!(doc = "Enable CCC", enable, 0);
+    bit_clear_fn!(doc = "Disable CCC", disable, 0);
 }
 
 #[derive(Debug)]
@@ -298,56 +202,56 @@ impl EnclosureLocation {
 pub struct EnclosureControl(u32);
 
 impl EnclosureControl {
-    bit_get!(doc = "Port Multiplier Support?", has_port_multiplier, 27);
-    bit_get!(doc = "Activity LED Hardware Driven", has_hardware_activity_led, 26);
-    bit_get!(doc = "Transmit Only", has_transmit_only, 25);
-    bit_get!(doc = "Single Message Buffer", has_single_message_buffer, 24);
-    bit_get!(doc = "SGPIO Enclosure Management Messages", has_sgpio, 19);
-    bit_get!(doc = "SES-2 Enclosure Management Messages", has_ses2, 18);
-    bit_get!(doc = "SAF-TE Enclosure Management Messages", has_safte, 17);
-    bit_get!(doc = "LED Message Types", led_types, 16);
+    bit_get_fn!(doc = "Port Multiplier Support?", has_port_multiplier, 27);
+    bit_get_fn!(doc = "Activity LED Hardware Driven", has_hardware_activity_led, 26);
+    bit_get_fn!(doc = "Transmit Only", has_transmit_only, 25);
+    bit_get_fn!(doc = "Single Message Buffer", has_single_message_buffer, 24);
+    bit_get_fn!(doc = "SGPIO Enclosure Management Messages", has_sgpio, 19);
+    bit_get_fn!(doc = "SES-2 Enclosure Management Messages", has_ses2, 18);
+    bit_get_fn!(doc = "SAF-TE Enclosure Management Messages", has_safte, 17);
+    bit_get_fn!(doc = "LED Message Types", led_types, 16);
 
-    bit_set!(doc = "Reset", reset, 9);
-    bit_set!(doc = "Transmit Message", transmit_message, 8);
+    bit_set_fn!(doc = "Reset", reset, 9);
+    bit_set_fn!(doc = "Transmit Message", transmit_message, 8);
 
-    bit_get!(doc = "Message Received", message_received, 0);
-    bit_set!(doc = "Message Received", set_message_received, 0);
+    bit_get_fn!(doc = "Message Received", message_received, 0);
+    bit_set_fn!(doc = "Message Received", set_message_received, 0);
 }
 
 #[derive(Debug)]
 pub struct ExtendedCaps(u32);
 
 impl ExtendedCaps {
-    bit_get!(doc = "DevSleep Entrance from Slumber Only", has_deso, 5);
-    bit_get!(doc = "Supports Aggressive Device Sleep Management", has_agressive_sleep_management, 4);
-    bit_get!(doc = "Supports Device Sleep", has_device_sleep, 3);
-    bit_get!(doc = "Automatic Partial to Slumber Transitions", has_automatic_slumber, 2);
-    bit_get!(doc = "NVMHCI Present", has_nvmhci, 1);
-    bit_get!(doc = "BIOS/OS Handoff", has_bios_os_handoff, 0);
+    bit_get_fn!(doc = "DevSleep Entrance from Slumber Only", has_deso, 5);
+    bit_get_fn!(doc = "Supports Aggressive Device Sleep Management", has_agressive_sleep_management, 4);
+    bit_get_fn!(doc = "Supports Device Sleep", has_device_sleep, 3);
+    bit_get_fn!(doc = "Automatic Partial to Slumber Transitions", has_automatic_slumber, 2);
+    bit_get_fn!(doc = "NVMHCI Present", has_nvmhci, 1);
+    bit_get_fn!(doc = "BIOS/OS Handoff", has_bios_os_handoff, 0);
 }
 
 #[derive(Debug)]
 pub struct BiosHandOffStatus(u32);
 
 impl BiosHandOffStatus {
-    bit_get!(doc = "BIOS Busy", is_bios_busy, 4);
-    bit_set!(doc = "Set BIOS Busy", set_bios_busy, 4);
-    bit_clear!(doc = "Clear BIOS Busy", clear_bios_busy, 4);
+    bit_get_fn!(doc = "BIOS Busy", is_bios_busy, 4);
+    bit_set_fn!(doc = "Set BIOS Busy", set_bios_busy, 4);
+    bit_clear_fn!(doc = "Clear BIOS Busy", clear_bios_busy, 4);
 
-    bit_get!(doc = "OS Ownership Change", change_ownership_to_os, 3);
-    bit_set!(doc = "Clear OS Ownership Change Status", clear_change_ownership_to_os, 3);
+    bit_get_fn!(doc = "OS Ownership Change", change_ownership_to_os, 3);
+    bit_set_fn!(doc = "Clear OS Ownership Change Status", clear_change_ownership_to_os, 3);
 
-    bit_get!(doc = "SMI on OS Ownership Change", has_smi_on_ownership_change, 2);
-    bit_set!(doc = "SMI on OS Ownership Change Enable", enable_smi_on_ownership_change, 2);
-    bit_clear!(doc = "SMI on OS Ownership Change Disable", disable_smi_on_ownership_change, 2);
+    bit_get_fn!(doc = "SMI on OS Ownership Change", has_smi_on_ownership_change, 2);
+    bit_set_fn!(doc = "SMI on OS Ownership Change Enable", enable_smi_on_ownership_change, 2);
+    bit_clear_fn!(doc = "SMI on OS Ownership Change Disable", disable_smi_on_ownership_change, 2);
 
-    bit_get!(doc = "OS Owned Semaphore", os_owned, 1);
-    bit_set!(doc = "OS Owned Semaphore", set_os_owned, 1);
-    bit_clear!(doc = "OS Owned Semaphore", clear_os_owned, 1);
+    bit_get_fn!(doc = "OS Owned Semaphore", os_owned, 1);
+    bit_set_fn!(doc = "OS Owned Semaphore", set_os_owned, 1);
+    bit_clear_fn!(doc = "OS Owned Semaphore", clear_os_owned, 1);
 
-    bit_get!(doc = "BIOS Owned Semaphore", bios_owned, 1);
-    bit_set!(doc = "BIOS Owned Semaphore", set_bios_owned, 1);
-    bit_clear!(doc = "BIOS Owned Semaphore", clear_bios_owned, 1);
+    bit_get_fn!(doc = "BIOS Owned Semaphore", bios_owned, 1);
+    bit_set_fn!(doc = "BIOS Owned Semaphore", set_bios_owned, 1);
+    bit_clear_fn!(doc = "BIOS Owned Semaphore", clear_bios_owned, 1);
 }
 
 #[repr(packed)]
@@ -379,7 +283,7 @@ pub struct Hba {
     /// Vendor specific registers (0xA0 - 0xFF)
     pub vendor: [u8; 96],
     /// Port control registers (0x100 - 0x10FF)
-    pub ports: [HbaPort; 32],
+    ports: [HbaPort; 32],
 }
 
 impl Hba {
@@ -391,12 +295,16 @@ impl Hba {
         &self.ports[port]
     }
 
-    pub fn get_port_mut(&mut self, port: usize) -> &mut HbaPort {
+    /// Get a mutable reference to a port.
+    ///
+    /// # Unsafe
+    ///   * Ensure that this is called only once per port.
+    pub unsafe fn get_port_mut(&mut self, port: usize) -> &mut HbaPort {
         assert!(port < 32);
         assert!(port < self.cap.ports() as usize + 1);
         assert!(self.pi.is_implemented(port));
 
-        &mut self.ports[port]
+        mem::transmute(&mut self.ports[port])
     }
 
 }
@@ -475,17 +383,12 @@ pub enum HbaPortType {
     Unknown(u32),
 }
 
-#[derive(Debug)]
-enum DevError {
-    TimoutReached
-}
-
 impl HbaPort {
 
     pub fn start(&mut self) {
         wait_until(|| {
             !self.cmd.command_list_running()
-        }, Duration::from_millis(500)).unwrap(); // TODO: duration
+        }, Duration::from_millis(500)).unwrap();
 
         self.cmd.start();
     }
@@ -511,13 +414,19 @@ impl HbaPort {
         self.sctl.set_device_detection_init(0x0);
         while self.ssts.device_detection() != 0x3 {}
 
-        self.serr.0 = u32::max_value();
+        self.serr.clear();
 
         self.start();
     }
 
+    pub fn is_present(&self) -> bool {
+        self.ssts.device_detection() == HBA_SSTS_PRESENT
+        //&& self.tfd.status().bsy == 0
+        //&& self.tfd.status().drq == 0
+    }
+
     pub fn probe(&self) -> HbaPortType {
-        if self.ssts.device_detection() == HBA_SSTS_PRESENT {
+        if self.is_present() {
             match self.sig.0 {
                 HBA_SIG_ATA => HbaPortType::SATA,
                 HBA_SIG_ATAPI => HbaPortType::SATAPI,
@@ -536,126 +445,126 @@ impl HbaPort {
 pub struct PortInterruptStatus(u32);
 
 impl PortInterruptStatus {
-    bit_get!(doc = "Cold Port Detect Status", cold_port_detected, 31);
-    bit_clear!(doc = "Clear Cold Port Detect Status", clear_cold_port_detected, 31);
+    bit_get_fn!(doc = "Cold Port Detect Status", cold_port_detected, 31);
+    bit_clear_fn!(doc = "Clear Cold Port Detect Status", clear_cold_port_detected, 31);
 
-    bit_get!(doc = "Task File Error Status", task_file_error, 30);
-    bit_clear!(doc = "Clear Task File Error Status", clear_task_file_error, 30);
+    bit_get_fn!(doc = "Task File Error Status", task_file_error, 30);
+    bit_clear_fn!(doc = "Clear Task File Error Status", clear_task_file_error, 30);
 
-    bit_get!(doc = "Host Bus Fatal Error Status", host_bus_fatal_error, 29);
-    bit_clear!(doc = "Clear Host Bus Fatal Error Status", clear_host_bus_fatal_error, 29);
+    bit_get_fn!(doc = "Host Bus Fatal Error Status", host_bus_fatal_error, 29);
+    bit_clear_fn!(doc = "Clear Host Bus Fatal Error Status", clear_host_bus_fatal_error, 29);
 
-    bit_get!(doc = "Host Bus Data Error Status", host_bus_data_error, 28);
-    bit_clear!(doc = "Clear Host Bus Data Error Status", clear_host_bus_data_error, 28);
+    bit_get_fn!(doc = "Host Bus Data Error Status", host_bus_data_error, 28);
+    bit_clear_fn!(doc = "Clear Host Bus Data Error Status", clear_host_bus_data_error, 28);
 
-    bit_get!(doc = "Interface Fatal Error Status", interface_fatal_error, 27);
-    bit_clear!(doc = "Clear Interface Fatal Error Status", clear_interface_fatal_error, 27);
+    bit_get_fn!(doc = "Interface Fatal Error Status", interface_fatal_error, 27);
+    bit_clear_fn!(doc = "Clear Interface Fatal Error Status", clear_interface_fatal_error, 27);
 
-    bit_get!(doc = "Interface Non-fatal Error Status", interface_non_fatal_error, 26);
-    bit_clear!(doc = "Clear Interface Non-fatal Error Status", clear_interface_non_fatal_error, 26);
+    bit_get_fn!(doc = "Interface Non-fatal Error Status", interface_non_fatal_error, 26);
+    bit_clear_fn!(doc = "Clear Interface Non-fatal Error Status", clear_interface_non_fatal_error, 26);
 
-    bit_get!(doc = "Overflow Status", overflow, 24);
-    bit_clear!(doc = "Clear Overflow Status", clear_overflow, 24);
+    bit_get_fn!(doc = "Overflow Status", overflow, 24);
+    bit_clear_fn!(doc = "Clear Overflow Status", clear_overflow, 24);
 
-    bit_get!(doc = "Incorrect Port Multiplier Status", incorrect_port_multiplier, 23);
-    bit_clear!(doc = "Clear Incorrect Port Multiplier Status", clear_incorrect_port_multiplier, 23);
+    bit_get_fn!(doc = "Incorrect Port Multiplier Status", incorrect_port_multiplier, 23);
+    bit_clear_fn!(doc = "Clear Incorrect Port Multiplier Status", clear_incorrect_port_multiplier, 23);
 
-    bit_get!(doc = "PhyRdy Change Status", phy_ready, 22);
+    bit_get_fn!(doc = "PhyRdy Change Status", phy_ready, 22);
 
-    bit_get!(doc = "Device Mechanical Presence Status", device_mechanical_presence, 7);
-    bit_clear!(doc = "Clear Device Mechanical Presence Status", clear_device_mechanical_presence, 7);
+    bit_get_fn!(doc = "Device Mechanical Presence Status", device_mechanical_presence, 7);
+    bit_clear_fn!(doc = "Clear Device Mechanical Presence Status", clear_device_mechanical_presence, 7);
 
-    bit_get!(doc = "Port Connect Change Status", port_connect_change, 6);
+    bit_get_fn!(doc = "Port Connect Change Status", port_connect_change, 6);
 
-    bit_get!(doc = "Descriptor Processed", descriptor_processed, 5);
-    bit_clear!(doc = "Clear Descriptor Processed", clear_descriptor_processed, 5);
+    bit_get_fn!(doc = "Descriptor Processed", descriptor_processed, 5);
+    bit_clear_fn!(doc = "Clear Descriptor Processed", clear_descriptor_processed, 5);
 
-    bit_get!(doc = "Unknown FIS Interrupt", unknown_fis_interrupt, 4);
+    bit_get_fn!(doc = "Unknown FIS Interrupt", unknown_fis_interrupt, 4);
 
-    bit_get!(doc = "Received a Set Device Bits Interrupt", set_device_bit_interrupt, 3);
-    bit_clear!(doc = "Clear Set Device Bits Interrupt", clear_set_device_bit_interrupt, 3);
+    bit_get_fn!(doc = "Received a Set Device Bits Interrupt", set_device_bit_interrupt, 3);
+    bit_clear_fn!(doc = "Clear Set Device Bits Interrupt", clear_set_device_bit_interrupt, 3);
 
-    bit_get!(doc = "DMA Setup FIS Interrupt", dma_setup_fis_interrupt, 2);
-    bit_clear!(doc = "Clear DMA Setup FIS Interrupt", clear_dma_setup_fis_interrupt, 2);
+    bit_get_fn!(doc = "DMA Setup FIS Interrupt", dma_setup_fis_interrupt, 2);
+    bit_clear_fn!(doc = "Clear DMA Setup FIS Interrupt", clear_dma_setup_fis_interrupt, 2);
 
-    bit_get!(doc = "PIO Setup FIS Interrupt", pio_setup_fis_interrupt, 1);
-    bit_clear!(doc = "Clear PIO Setup FIS Interrupt", clear_pio_setup_fis_interrupt, 1);
+    bit_get_fn!(doc = "PIO Setup FIS Interrupt", pio_setup_fis_interrupt, 1);
+    bit_clear_fn!(doc = "Clear PIO Setup FIS Interrupt", clear_pio_setup_fis_interrupt, 1);
 
-    bit_get!(doc = "Device to Host Register FIS Interrupt", d2h_register_fis_interrupt, 0);
-    bit_clear!(doc = "Clear Device to Host Register FIS Interrupt", clear_d2h_register_fis_interrupt, 0);
+    bit_get_fn!(doc = "Device to Host Register FIS Interrupt", d2h_register_fis_interrupt, 0);
+    bit_clear_fn!(doc = "Clear Device to Host Register FIS Interrupt", clear_d2h_register_fis_interrupt, 0);
 }
 
 #[derive(Debug)]
 pub struct InterruptEnable(u32);
 
 impl InterruptEnable {
-    bit_get!(doc = "Cold Presence Detect", cold_presence_detect, 31);
-    bit_set!(doc = "Enable Cold Presence Detect", enable_cold_presence_detect, 31);
-    bit_clear!(doc = "Disable Cold Presence Detect", disable_cold_presence_detect, 31);
+    bit_get_fn!(doc = "Cold Presence Detect", cold_presence_detect, 31);
+    bit_set_fn!(doc = "Enable Cold Presence Detect", enable_cold_presence_detect, 31);
+    bit_clear_fn!(doc = "Disable Cold Presence Detect", disable_cold_presence_detect, 31);
 
-    bit_get!(doc = "Task File Error", task_file_error, 30);
-    bit_set!(doc = "Enable Task File Error", enable_task_file_error, 30);
-    bit_clear!(doc = "Disable Task File Error", disable_task_file_error, 30);
+    bit_get_fn!(doc = "Task File Error", task_file_error, 30);
+    bit_set_fn!(doc = "Enable Task File Error", enable_task_file_error, 30);
+    bit_clear_fn!(doc = "Disable Task File Error", disable_task_file_error, 30);
 
-    bit_get!(doc = "Host Bus Fatal Error", host_bus_fatal_error, 29);
-    bit_set!(doc = "Enable Host Bus Fatal Error", enable_host_bus_fatal_error, 29);
-    bit_clear!(doc = "Disable Host Bus Fatal Error", disable_host_bus_fatal_error, 29);
+    bit_get_fn!(doc = "Host Bus Fatal Error", host_bus_fatal_error, 29);
+    bit_set_fn!(doc = "Enable Host Bus Fatal Error", enable_host_bus_fatal_error, 29);
+    bit_clear_fn!(doc = "Disable Host Bus Fatal Error", disable_host_bus_fatal_error, 29);
 
-    bit_get!(doc = "Host Bus data Error", host_bus_data_error, 28);
-    bit_set!(doc = "Enable Host Bus data Error", enable_host_bus_data_error, 28);
-    bit_clear!(doc = "Disable Host Bus data Error", disable_host_bus_data_error, 28);
+    bit_get_fn!(doc = "Host Bus data Error", host_bus_data_error, 28);
+    bit_set_fn!(doc = "Enable Host Bus data Error", enable_host_bus_data_error, 28);
+    bit_clear_fn!(doc = "Disable Host Bus data Error", disable_host_bus_data_error, 28);
 
-    bit_get!(doc = "Interface Fatal Error", interface_fatal_error, 27);
-    bit_set!(doc = "Enable Interface Fatal Error", enable_interface_fatal_error, 27);
-    bit_clear!(doc = "Disable Interface Fatal Error", disable_interface_fatal_error, 27);
+    bit_get_fn!(doc = "Interface Fatal Error", interface_fatal_error, 27);
+    bit_set_fn!(doc = "Enable Interface Fatal Error", enable_interface_fatal_error, 27);
+    bit_clear_fn!(doc = "Disable Interface Fatal Error", disable_interface_fatal_error, 27);
 
-    bit_get!(doc = "Interface Non-fatal Error", interface_non_fatal_error, 26);
-    bit_set!(doc = "Enable Interface Non-fatal Error", enable_interface_non_fatal_error, 26);
-    bit_clear!(doc = "Disable Interface Non-fatal Error", disable_interface_non_fatal_error, 26);
+    bit_get_fn!(doc = "Interface Non-fatal Error", interface_non_fatal_error, 26);
+    bit_set_fn!(doc = "Enable Interface Non-fatal Error", enable_interface_non_fatal_error, 26);
+    bit_clear_fn!(doc = "Disable Interface Non-fatal Error", disable_interface_non_fatal_error, 26);
 
-    bit_get!(doc = "Overflow", overflow, 24);
-    bit_set!(doc = "Enable Overflow", enable_overflow, 24);
-    bit_clear!(doc = "Disable Overflow", disable_overflow, 24);
+    bit_get_fn!(doc = "Overflow", overflow, 24);
+    bit_set_fn!(doc = "Enable Overflow", enable_overflow, 24);
+    bit_clear_fn!(doc = "Disable Overflow", disable_overflow, 24);
 
-    bit_get!(doc = "Incorrect Port Multiplier", incorrect_port_multiplier, 23);
-    bit_set!(doc = "Enable Incorrect Port Multiplier", enable_incorrect_port_multiplier, 23);
-    bit_clear!(doc = "Disable Incorrect Port Multiplier", disable_incorrect_port_multiplier, 23);
+    bit_get_fn!(doc = "Incorrect Port Multiplier", incorrect_port_multiplier, 23);
+    bit_set_fn!(doc = "Enable Incorrect Port Multiplier", enable_incorrect_port_multiplier, 23);
+    bit_clear_fn!(doc = "Disable Incorrect Port Multiplier", disable_incorrect_port_multiplier, 23);
 
-    bit_get!(doc = "PyRdy Change Interrupt", pyrdy_change_irq, 22);
-    bit_set!(doc = "Enable PyRdy Change Interrupt", enable_pyrdy_change_irq, 22);
-    bit_clear!(doc = "Disable PyRdy Change Interrupt", disable_pyrdy_change_irq, 22);
+    bit_get_fn!(doc = "PyRdy Change Interrupt", phyrdy_change_irq, 22);
+    bit_set_fn!(doc = "Enable PyRdy Change Interrupt", enable_phyrdy_change_irq, 22);
+    bit_clear_fn!(doc = "Disable PyRdy Change Interrupt", disable_phyrdy_change_irq, 22);
 
-    bit_get!(doc = "Device Mechanical Presence", device_mechanical_presence, 7);
-    bit_set!(doc = "Enable Device Mechanical Presence", enable_device_mechanical_presence, 7);
-    bit_clear!(doc = "Disable Device Mechanical Presence", disable_device_mechanical_presence, 7);
+    bit_get_fn!(doc = "Device Mechanical Presence", device_mechanical_presence, 7);
+    bit_set_fn!(doc = "Enable Device Mechanical Presence", enable_device_mechanical_presence, 7);
+    bit_clear_fn!(doc = "Disable Device Mechanical Presence", disable_device_mechanical_presence, 7);
 
-    bit_get!(doc = "Port Change Interrupt", port_change_irq, 6);
-    bit_set!(doc = "Enable Port Change Interrupt", enable_port_change_irq, 6);
-    bit_clear!(doc = "Disable Port Change Interrupt", disable_port_change_irq, 6);
+    bit_get_fn!(doc = "Port Change Interrupt", port_change_irq, 6);
+    bit_set_fn!(doc = "Enable Port Change Interrupt", enable_port_change_irq, 6);
+    bit_clear_fn!(doc = "Disable Port Change Interrupt", disable_port_change_irq, 6);
 
-    bit_get!(doc = "Descriptor Processed Interrupt", descriptor_processed, 5);
-    bit_set!(doc = "Enable Descriptor Processed Interrupt", enable_descriptor_processed, 5);
-    bit_clear!(doc = "Disable Descriptor Processed Interrupt", disable_descriptor_processed, 5);
+    bit_get_fn!(doc = "Descriptor Processed Interrupt", descriptor_processed, 5);
+    bit_set_fn!(doc = "Enable Descriptor Processed Interrupt", enable_descriptor_processed, 5);
+    bit_clear_fn!(doc = "Disable Descriptor Processed Interrupt", disable_descriptor_processed, 5);
 
-    bit_get!(doc = "Unknown FIS Interrupt", unknown_fis_irq, 4);
-    bit_set!(doc = "Enable Unknown FIS Interrupt", enable_unknown_fis_irq, 4);
-    bit_clear!(doc = "Disable Unknown FIS Interrupt", disable_unknown_fis_irq, 4);
+    bit_get_fn!(doc = "Unknown FIS Interrupt", unknown_fis_irq, 4);
+    bit_set_fn!(doc = "Enable Unknown FIS Interrupt", enable_unknown_fis_irq, 4);
+    bit_clear_fn!(doc = "Disable Unknown FIS Interrupt", disable_unknown_fis_irq, 4);
 
-    bit_get!(doc = "Set Device Bits FIS Interrupt", device_bits_fis_irq, 3);
-    bit_set!(doc = "Enable Set Device Bits FIS Interrupt", enable_device_bits_fis_irq, 3);
-    bit_clear!(doc = "Disable Set Device Bits FIS Interrupt", disable_device_bits_fis_irq, 3);
+    bit_get_fn!(doc = "Set Device Bits FIS Interrupt", device_bits_fis_irq, 3);
+    bit_set_fn!(doc = "Enable Set Device Bits FIS Interrupt", enable_device_bits_fis_irq, 3);
+    bit_clear_fn!(doc = "Disable Set Device Bits FIS Interrupt", disable_device_bits_fis_irq, 3);
 
-    bit_get!(doc = "DMA Setup FIS Interrupt", dma_setup_fis_irq, 2);
-    bit_set!(doc = "Enable DMA Setup FIS Interrupt", enable_dma_setup_fis_irq, 2);
-    bit_clear!(doc = "Disable DMA Setup FIS Interrupt", disable_dma_setup_fis_irq, 2);
+    bit_get_fn!(doc = "DMA Setup FIS Interrupt", dma_setup_fis_irq, 2);
+    bit_set_fn!(doc = "Enable DMA Setup FIS Interrupt", enable_dma_setup_fis_irq, 2);
+    bit_clear_fn!(doc = "Disable DMA Setup FIS Interrupt", disable_dma_setup_fis_irq, 2);
 
-    bit_get!(doc = "PIO Setup FIS Interrupt", pio_setup_irq, 1);
-    bit_set!(doc = "Enable PIO Setup FIS Interrupt", enable_pio_setup_irq, 1);
-    bit_clear!(doc = "Disable PIO Setup FIS Interrupt", disable_pio_setup_irq, 1);
+    bit_get_fn!(doc = "PIO Setup FIS Interrupt", pio_setup_irq, 1);
+    bit_set_fn!(doc = "Enable PIO Setup FIS Interrupt", enable_pio_setup_irq, 1);
+    bit_clear_fn!(doc = "Disable PIO Setup FIS Interrupt", disable_pio_setup_irq, 1);
 
-    bit_get!(doc = "Device to host Register FIS Interrupt", d2h_register_fis_interrupt, 0);
-    bit_set!(doc = "Enable Device to host Register FIS Interrupt", enable_d2h_register_fis_interrupt, 0);
-    bit_clear!(doc = "Disable Device to host Register FIS Interrupt", disable_d2h_register_fis_interrupt, 0);
+    bit_get_fn!(doc = "Device to host Register FIS Interrupt", d2h_register_fis_interrupt, 0);
+    bit_set_fn!(doc = "Enable Device to host Register FIS Interrupt", enable_d2h_register_fis_interrupt, 0);
+    bit_clear_fn!(doc = "Disable Device to host Register FIS Interrupt", disable_d2h_register_fis_interrupt, 0);
 }
 
 #[derive(Debug)]
@@ -673,59 +582,59 @@ impl CommandAndStatus {
         unreachable!();
     }
 
-    bit_get!(doc = "Aggressive Slumber / Partial (ASP)", aggressive_slumber, 27);
-    bit_set!(doc = "Set Aggressive Slumber / Partial (ASP)", set_aggressive_slumber, 27);
+    bit_get_fn!(doc = "Aggressive Slumber / Partial (ASP)", aggressive_slumber, 27);
+    bit_set_fn!(doc = "Set Aggressive Slumber / Partial (ASP)", set_aggressive_slumber, 27);
 
-    bit_get!(doc = "Aggressive Link Power Management Enable (ALPE)", aggressive_link_power_mgmt, 26);
-    bit_set!(doc = "Set Aggressive Link Power Management Enable (ALPE)", set_aggressive_link_power_mgmt, 26);
+    bit_get_fn!(doc = "Aggressive Link Power Management Enable (ALPE)", aggressive_link_power_mgmt, 26);
+    bit_set_fn!(doc = "Set Aggressive Link Power Management Enable (ALPE)", set_aggressive_link_power_mgmt, 26);
 
-    bit_get!(doc = "Drive LED on ATAPI Enable (DLAE)", drive_led_on_atapi, 25);
-    bit_set!(doc = "Set Drive LED on ATAPI Enable (DLAE)", set_drive_led_on_atapi, 25);
+    bit_get_fn!(doc = "Drive LED on ATAPI Enable (DLAE)", drive_led_on_atapi, 25);
+    bit_set_fn!(doc = "Set Drive LED on ATAPI Enable (DLAE)", set_drive_led_on_atapi, 25);
 
-    bit_get!(doc = "Device is ATAPI", device_is_atapi, 24);
-    bit_set!(doc = "Set Device is ATAPI", set_device_is_atapi, 24);
+    bit_get_fn!(doc = "Device is ATAPI", device_is_atapi, 24);
+    bit_set_fn!(doc = "Set Device is ATAPI", set_device_is_atapi, 24);
 
-    bit_get!(doc = "Automatic Partial to Slumber Transitions Enabled (APSTE)", automatic_partial_slumber_transitions, 23);
-    bit_set!(doc = "Set Automatic Partial to Slumber Transitions Enabled (APSTE)", set_automatic_partial_slumber_transitions, 23);
+    bit_get_fn!(doc = "Automatic Partial to Slumber Transitions Enabled (APSTE)", automatic_partial_slumber_transitions, 23);
+    bit_set_fn!(doc = "Set Automatic Partial to Slumber Transitions Enabled (APSTE)", set_automatic_partial_slumber_transitions, 23);
 
-    bit_get!(doc = "FIS-based Switching Capable Port", fis_switching_port, 22);
-    bit_get!(doc = "External SATA Port", external_sata_port, 21);
-    bit_get!(doc = "Cold Presence Detection", cold_presence_detection, 20);
-    bit_get!(doc = "Mechanical Presence Switch Attached to Port", mechanical_presence_switch_attached, 19);
-    bit_get!(doc = "Hot Plug Capable Port", hot_plug_capable_port, 18);
+    bit_get_fn!(doc = "FIS-based Switching Capable Port", fis_switching_port, 22);
+    bit_get_fn!(doc = "External SATA Port", external_sata_port, 21);
+    bit_get_fn!(doc = "Cold Presence Detection", cold_presence_detection, 20);
+    bit_get_fn!(doc = "Mechanical Presence Switch Attached to Port", mechanical_presence_switch_attached, 19);
+    bit_get_fn!(doc = "Hot Plug Capable Port", hot_plug_capable_port, 18);
 
-    bit_get!(doc = "Port Multiplier Attached", port_multiplier_attached, 17);
-    bit_set!(doc = "Set Port Multiplier Attached", set_port_multiplier_attached, 17);
-    bit_clear!(doc = "Clear Port Multiplier Attached", clear_port_multiplier_attached, 17);
+    bit_get_fn!(doc = "Port Multiplier Attached", port_multiplier_attached, 17);
+    bit_set_fn!(doc = "Set Port Multiplier Attached", set_port_multiplier_attached, 17);
+    bit_clear_fn!(doc = "Clear Port Multiplier Attached", clear_port_multiplier_attached, 17);
 
-    bit_get!(doc = "Cold Presence State", cold_presence, 16);
-    bit_get!(doc = "Command List Running (CR)", command_list_running, 15);
-    bit_get!(doc = "FIS Receive Running (FR)", fis_receive_running, 14);
-    bit_get!(doc = "Mechanical Presence Switch State", mechanical_presence_switch_state, 13);
+    bit_get_fn!(doc = "Cold Presence State", cold_presence, 16);
+    bit_get_fn!(doc = "Command List Running (CR)", command_list_running, 15);
+    bit_get_fn!(doc = "FIS Receive Running (FR)", fis_receive_running, 14);
+    bit_get_fn!(doc = "Mechanical Presence Switch State", mechanical_presence_switch_state, 13);
 
     /// Current Command Slot
     pub fn ccs(&self) -> u8 {
         bits_get(self.0, 8, 12) as u8
     }
 
-    bit_get!(doc = "FIS Receive (FRE)", fis_receive, 4);
-    bit_set!(doc = "Set FIS Receive", enable_fis_receive, 4);
-    bit_clear!(doc = "Clear FIS Receive", disable_fis_receive, 4);
+    bit_get_fn!(doc = "FIS Receive (FRE)", fis_receive, 4);
+    bit_set_fn!(doc = "Set FIS Receive", enable_fis_receive, 4);
+    bit_clear_fn!(doc = "Clear FIS Receive", disable_fis_receive, 4);
 
-    bit_get!(doc = "Command List Override", command_list_override, 3);
-    bit_set!(doc = "Set Command List Override", clear_command_list_override, 3);
+    bit_get_fn!(doc = "Command List Override", command_list_override, 3);
+    bit_set_fn!(doc = "Set Command List Override", clear_command_list_override, 3);
 
-    bit_get!(doc = "Power On Device", power_on_device, 2);
-    bit_set!(doc = "Set Power On Device", enable_power_on_device, 2);
-    bit_clear!(doc = "Clear Power On Device", disable_power_on_device, 2);
+    bit_get_fn!(doc = "Power On Device", power_on_device, 2);
+    bit_set_fn!(doc = "Set Power On Device", enable_power_on_device, 2);
+    bit_clear_fn!(doc = "Clear Power On Device", disable_power_on_device, 2);
 
-    bit_get!(doc = "Spin-Up Device", spin_up_device, 1);
-    bit_set!(doc = "Set Spin-Up Device", enable_spin_up_device, 1);
-    bit_clear!(doc = "Clear Spin-Up Device", disable_spin_up_device, 1);
+    bit_get_fn!(doc = "Spin-Up Device", spin_up_device, 1);
+    bit_set_fn!(doc = "Set Spin-Up Device", enable_spin_up_device, 1);
+    bit_clear_fn!(doc = "Clear Spin-Up Device", disable_spin_up_device, 1);
 
-    bit_get!(doc = "Is Started? (ST)", is_started, 0);
-    bit_set!(doc = "Set Start", start, 0);
-    bit_clear!(doc = "Stop", stop, 0);
+    bit_get_fn!(doc = "Is Started? (ST)", is_started, 0);
+    bit_set_fn!(doc = "Set Start", start, 0);
+    bit_clear_fn!(doc = "Stop", stop, 0);
 }
 
 #[derive(Debug)]
@@ -819,6 +728,10 @@ impl SerialAtaError {
         bits_get(self.0, 0, 15) as u16
     }
 
+    pub fn clear(&mut self) {
+        self.0 = 0b00000111111111110000111100000011;
+    }
+
 }
 
 #[derive(Debug)]
@@ -895,12 +808,12 @@ impl FisSwitchingControl {
         unreachable!()
     }
 
-    bit_get!(doc = "Single Device Error", single_device_error, 2);
-    bit_set!(doc = "Device Error Clear", device_clear_error, 1);
+    bit_get_fn!(doc = "Single Device Error", single_device_error, 2);
+    bit_set_fn!(doc = "Device Error Clear", device_clear_error, 1);
 
-    bit_get!(doc = "Enabled", is_enabled, 0);
-    bit_set!(doc = "Enable FIS-based switching", enable, 0);
-    bit_clear!(doc = "Disable FIS-based switching", disable, 0);
+    bit_get_fn!(doc = "Enabled", is_enabled, 0);
+    bit_set_fn!(doc = "Enable FIS-based switching", enable, 0);
+    bit_clear_fn!(doc = "Disable FIS-based switching", disable, 0);
 }
 
 #[derive(Debug)]
@@ -928,9 +841,45 @@ impl DeviceSleep {
         bits_get(self.0, 2, 9) as u8
     }
 
-    bit_get!(doc = "Device Sleep Present (DSP)", has_device_sleep, 1);
+    bit_get_fn!(doc = "Device Sleep Present (DSP)", has_device_sleep, 1);
 
-    bit_get!(doc = "Aggressive Device Sleep (ADSE)", aggressive_device_sleep, 0);
-    bit_set!(doc = "Aggressive Device Sleep Enable (ADSE)", enable_aggressive_device_sleep, 0);
-    bit_clear!(doc = "Aggressive Device Sleep Disable (ADSE)", disable_aggressive_device_sleep, 0);
+    bit_get_fn!(doc = "Aggressive Device Sleep (ADSE)", aggressive_device_sleep, 0);
+    bit_set_fn!(doc = "Aggressive Device Sleep Enable (ADSE)", enable_aggressive_device_sleep, 0);
+    bit_clear_fn!(doc = "Aggressive Device Sleep Disable (ADSE)", disable_aggressive_device_sleep, 0);
+}
+
+#[derive(Debug)]
+#[repr(packed)]
+pub struct CommandHeader {
+    flags: u16,
+    pub prdtl: u16,
+    pub prdbc: u32,
+    pub ctba: u64,
+    reserved: [u32; 4]
+}
+
+impl CommandHeader {
+
+    /// Create an empty Command Header
+    pub fn new() -> CommandHeader {
+        CommandHeader { flags: 0, prdtl: 0, prdbc: 0, ctba: 0, reserved: [0,0,0,0] }
+    }
+
+    /// Command FIS Length (CFL)
+    pub fn set_cfl(&self, length: u8) {
+        assert!(length != 0 && length != 1 && length <= 16);
+        bits_set(self.flags, 0, 4, length)
+    }
+
+    /// Set Port Multiplier Port (PMP)
+    pub fn set_pmp(&self, pmp: u8) {
+        bits_set(self.flags, 12, 15, pmp)
+    }
+
+    bit_set_fn!(doc = "ATAPI (A)", set_atapi, 5);
+    bit_set_fn!(doc = "Write (W)", set_write, 6);
+    bit_set_fn!(doc = "Prefetchable (P)", set_prefetchable, 7);
+    bit_set_fn!(doc = "Reset (R)", set_reset, 8);
+    bit_set_fn!(doc = "BIST (B)", set_bist, 9);
+    bit_set_fn!(doc = "Clear Busy upon R_OK (C)", set_clear_busy, 10);
 }

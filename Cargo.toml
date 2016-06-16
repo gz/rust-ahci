@@ -6,7 +6,7 @@ authors = ["Gerd Zellweger <mail@gerdzellweger.com>"]
 [dependencies]
 uio = "0.1.*"
 mmap = "*"
-#pci = "*"
+driverkit = { path = "../rust-driverkit" }
 
 [[bin]]
 name = "ahci"
