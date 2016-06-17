@@ -8,6 +8,10 @@ use ahci::*;
 use std::mem;
 use driverkit::mem::DevMem;
 
+pub fn round_up(val: usize, target: usize) -> usize {
+	return (val + target - 1) / target * target;
+}
+
 pub struct AhciDisk {
     pub bar5: MemoryMap,
     pub dev: uio::UioDevice,
@@ -32,15 +36,22 @@ impl AhciDisk {
 }
 
 pub struct AhciPort<'a> {
+    /// The Port number.
     pub ident: usize,
-    pub port: &'a mut HbaPort,
-    pub clb_mem: DevMem,
-    pub fb_mem: DevMem,
+    /// Number of command slots (from HBACapability).
+    ncs: u32,
+    /// PCI config space for the port.
+    port: &'a mut HbaPort,
+    /// Memory for command headers.
+    clb_mem: DevMem,
+    /// Memory for the FB.
+    fb_mem: DevMem,
+    ctba_mem: Vec<DevMem>,
 }
 
 impl<'a> AhciPort<'a> {
 
-    pub fn new(idx: usize, port: &'a mut HbaPort) -> AhciPort {
+    pub fn new(idx: usize, ncs: u32, port: &'a mut HbaPort) -> AhciPort {
         // Page 112:
         println!("Port {}: {:?}", idx, port.probe());
         port.stop();
@@ -77,6 +88,18 @@ impl<'a> AhciPort<'a> {
         port.ie.enable_pio_setup_irq();
         port.ie.enable_d2h_register_fis_interrupt();
 
+        let mut ctba_mem = Vec::with_capacity(ncs as usize);
+        for slot in 0..ncs {
+            let size = round_up(mem::size_of::<CommandTable>(), 4096);
+            let mem = DevMem::alloc(size).unwrap();
+
+            let clb = clb_mem.data();
+            let header: &mut CommandHeader = unsafe { &mut *(clb as *mut CommandHeader).offset(slot as isize) };
+            header.ctba = mem.physical_address();
+
+            ctba_mem.push(mem);
+        }
+
         // Software shall not set PxCMD.ST to ‘1’ until it is determined
         // that a functional device is present on the port as determined
         // by PxTFD.STS.BSY = ‘0’, PxTFD.STS.DRQ = ‘0’, and PxSSTS.DET = 3h.
@@ -85,30 +108,70 @@ impl<'a> AhciPort<'a> {
             port.start();
         }
 
-        AhciPort { ident: idx, port: port, clb_mem: clb_mem, fb_mem: fb_mem }
+        AhciPort {
+            ident: idx,
+            ncs: ncs,
+            port: port,
+            clb_mem: clb_mem,
+            fb_mem: fb_mem,
+            ctba_mem: ctba_mem
+        }
+    }
+
+    /// Determines if command slot is empty.
+    ///
+    /// An empty command slot has its respective bit cleared to ‘0’
+    /// in both the PxCI and PxSACT registers.
+    fn is_free_cmd_slot(&self, slot: u8) -> bool {
+        !self.port.ci.commands_issued(slot) && !self.port.sact.device_status(slot)
+    }
+
+    /// Finds the first free slot in all available command slots.
+    fn find_free_slot(&self) -> Option<u8> {
+        for slot in 0..self.ncs {
+            if self.is_free_cmd_slot(slot as u8) {
+                return Some(slot as u8);
+            }
+        }
+        None
     }
 
 
-    fn dma(&mut self, write: bool, block: u64, sectors: u64, mem: DevMem) -> Result<usize> {
+    pub fn dma(&mut self, write: bool, block: u64, sectors: u64, mem: DevMem) {
+        let slot = self.find_free_slot().unwrap();
+        println!("Found free slot: {:?}", slot);
 
-        //self.clb_mem.data() as *mut H
-        /*
-        let header = CommandHeader::new();
+        // Software builds a command FIS in system memory at location
+        // PxCLB[CH(pFreeSlot)]:CFIS with
+        // the command type.
+        let clb = self.clb_mem.data();
+        let header: &mut CommandHeader = unsafe { &mut *(clb as *mut CommandHeader).offset(slot as isize) };
+
+        // PRDTL containing the number of entries in the PRD table:
+        header.prdtl = 1;
+        // CFL set to the length of the command in the CFIS area:
+        header.set_cfl(2);
+        // A bit set if it is an ATAPI command:
+        header.set_atapi();
+        // W (Write) bit set if data is going to the device:
         if write {
             header.set_write();
-        }*/
+        }
+
+        let table: &mut CommandTable = unsafe { &mut *(self.ctba_mem[slot as usize].data() as *mut CommandTable) };
+        table.prdt[0] = RegionDescriptor::new(mem.physical_address(), 511, true);
+
+
 
     }
 
 }
 
-
-
-
 pub fn main() {
     println!("Hello from AHCI");
     let mut disk = AhciDisk::from_uio(0);
     let mut hba: &mut Hba = disk.get_hba_mut();
+    let ncs = hba.cap.command_slots();
 
     // Determine how many command slots the HBA supports, by reading CAP.NCS.
 
@@ -119,6 +182,8 @@ pub fn main() {
     let mut ports = Vec::new();
 
     let mut port = unsafe { hba.get_port_mut(0) };
-    ports.push(AhciPort::new(0, port));
+    ports.push(AhciPort::new(0, ncs, port));
 
+    let mem = DevMem::alloc(4096).unwrap();
+    ports[0].dma(false, 0, 1, mem);
 }

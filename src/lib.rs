@@ -852,8 +852,11 @@ impl DeviceSleep {
 #[repr(packed)]
 pub struct CommandHeader {
     flags: u16,
+    /// Physical Region Descriptor Table Length (PRDTL)
     pub prdtl: u16,
+    /// Physical Region Descriptor Byte Count (PRDBC)
     pub prdbc: u32,
+    /// Command Table Descriptor Base Address (CTBA)
     pub ctba: u64,
     reserved: [u32; 4]
 }
@@ -866,20 +869,81 @@ impl CommandHeader {
     }
 
     /// Command FIS Length (CFL)
-    pub fn set_cfl(&self, length: u8) {
+    pub fn set_cfl(&mut self, length: u8) {
         assert!(length != 0 && length != 1 && length <= 16);
-        bits_set(self.flags, 0, 4, length)
+        bits_set_16(&mut self.flags, 0, 4, length as u16)
     }
 
     /// Set Port Multiplier Port (PMP)
-    pub fn set_pmp(&self, pmp: u8) {
-        bits_set(self.flags, 12, 15, pmp)
+    pub fn set_pmp(&mut self, pmp: u8) {
+        bits_set_16(&mut self.flags, 12, 15, pmp as u16)
     }
 
-    bit_set_fn!(doc = "ATAPI (A)", set_atapi, 5);
-    bit_set_fn!(doc = "Write (W)", set_write, 6);
-    bit_set_fn!(doc = "Prefetchable (P)", set_prefetchable, 7);
-    bit_set_fn!(doc = "Reset (R)", set_reset, 8);
-    bit_set_fn!(doc = "BIST (B)", set_bist, 9);
-    bit_set_fn!(doc = "Clear Busy upon R_OK (C)", set_clear_busy, 10);
+    /// ATAPI (A)
+    pub fn set_atapi(&mut self) {
+        self.flags |= 1 << 5;
+    }
+
+    /// Write (W)
+    pub fn set_write(&mut self) {
+        self.flags |= 1 << 6;
+    }
+
+    /// Prefetchable (P)
+    pub fn set_prefetchable(&mut self) {
+        self.flags |= 1 << 7;
+    }
+
+    /// Reset (R)
+    pub fn set_reset(&mut self) {
+        self.flags |= 1 << 8;
+    }
+
+    /// BIST (B)
+    pub fn set_bist(&mut self) {
+        self.flags |= 1 << 9;
+    }
+
+    /// Clear Busy upon R_OK (C)
+    pub fn set_clear_busy(&mut self) {
+        self.flags |= 1 << 10;
+    }
+}
+
+#[repr(packed)]
+pub struct RegionDescriptor {
+    /// Data base address
+    dba: u64,
+    /// Reserved
+    reserved: u32,
+    /// Byte count and Interrupt bit (31)
+    dbc: u32,
+}
+
+impl RegionDescriptor {
+    pub fn new(dba: u64, dbc: u32, interrupt: bool) -> RegionDescriptor {
+        assert!(!is_bit_set!(dba, 0));
+        assert!(is_bit_set!(dbc, 0) && dbc <= 1024*1024*4);
+
+        let dbc_val = match interrupt {
+            true => (1<<31) | dbc,
+            false => dbc
+        };
+
+        RegionDescriptor { dba: dba, reserved: 0, dbc: dbc_val }
+    }
+}
+
+#[repr(packed)]
+pub struct CommandTable {
+    /// Command FIS
+    pub cfis: [u8; 64],
+    /// ATAPI command
+    pub acmd: [u8; 16],
+    /// Reserved
+    reserved: [u8; 48],
+    /// Physical Descriptior Region Table entries
+    /// Can be up to 65536 entries, we limit this to 248 for now
+    /// (which limits the size of CommandTable to a single page).
+    pub prdt: [RegionDescriptor; 248],
 }
