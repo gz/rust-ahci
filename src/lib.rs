@@ -11,6 +11,8 @@ use driverkit::timedops::wait_until;
 
 pub struct HBACapability(pub u32);
 
+pub mod fis;
+
 impl HBACapability {
     bit_get_fn!(doc = "Supports 64-bit Addressing", has_64bit_addressing, 31);
     bit_get_fn!(doc = "Supports Native Command Queuing", has_native_command_queing, 30);
@@ -78,6 +80,15 @@ pub struct GlobalHBAControl(u32);
 impl GlobalHBAControl {
     bit_get_fn!(doc = "AHCI Enable", ahci, 31);
     bit_set_fn!(doc = "AHCI Enable", set_ahci, 31);
+
+    bit_get_fn!(doc = "MSI Revert to Single Message (MRSM)", mrsm, 2);
+
+    bit_get_fn!(doc = "Are Interrupts Enabled?", interrupts_enabled, 1);
+    bit_set_fn!(doc = "Interrupt Enable", enable_interrupts, 1);
+    bit_clear_fn!(doc = "Interrupt Disable", disable_interrupts, 1);
+
+    bit_get_fn!(doc = "HBA Reset (HR) in progress", reset_pending, 0);
+    bit_set_fn!(doc = "HBA Reset (HR):", reset, 0);
 }
 
 #[derive(Debug)]
@@ -107,7 +118,7 @@ impl HbaInterruptStatus {
     }
 
     pub fn clear(&mut self, port: usize) {
-        self.0 |= 0 << port;
+        self.0 &= !(1 << port);
     }
 }
 
@@ -391,6 +402,7 @@ impl HbaPort {
         }, Duration::from_millis(500)).unwrap();
 
         self.cmd.start();
+        self.cmd.enable_fis_receive();
     }
 
     pub fn stop(&mut self) {
@@ -407,7 +419,6 @@ impl HbaPort {
     }
 
     pub fn reset(&mut self) {
-        self.stop();
 
         self.sctl.set_device_detection_init(0x1);
         thread::sleep(Duration::from_millis(1));
@@ -415,18 +426,16 @@ impl HbaPort {
         while self.ssts.device_detection() != 0x3 {}
 
         self.serr.clear();
-
-        self.start();
     }
 
     pub fn is_present(&self) -> bool {
         self.ssts.device_detection() == HBA_SSTS_PRESENT
-        //&& self.tfd.status().bsy == 0
-        //&& self.tfd.status().drq == 0
+        && !self.tfd.busy()
+        && !self.tfd.drq()
     }
 
     pub fn probe(&self) -> HbaPortType {
-        if self.is_present() {
+        if self.ssts.device_detection() == HBA_SSTS_PRESENT {
             match self.sig.0 {
                 HBA_SIG_ATA => HbaPortType::SATA,
                 HBA_SIG_ATAPI => HbaPortType::SATAPI,
@@ -498,6 +507,15 @@ impl PortInterruptStatus {
 pub struct InterruptEnable(u32);
 
 impl InterruptEnable {
+
+    pub fn enable_all(&mut self) {
+        self.0 = u32::max_value();
+    }
+
+    pub fn disable_all(&mut self) {
+        self.0 = 0;
+    }
+
     bit_get_fn!(doc = "Cold Presence Detect", cold_presence_detect, 31);
     bit_set_fn!(doc = "Enable Cold Presence Detect", enable_cold_presence_detect, 31);
     bit_clear_fn!(doc = "Disable Cold Presence Detect", disable_cold_presence_detect, 31);
@@ -567,7 +585,6 @@ impl InterruptEnable {
     bit_clear_fn!(doc = "Disable Device to host Register FIS Interrupt", disable_d2h_register_fis_interrupt, 0);
 }
 
-#[derive(Debug)]
 pub struct CommandAndStatus(u32);
 
 impl CommandAndStatus {
@@ -622,7 +639,7 @@ impl CommandAndStatus {
     bit_clear_fn!(doc = "Clear FIS Receive", disable_fis_receive, 4);
 
     bit_get_fn!(doc = "Command List Override", command_list_override, 3);
-    bit_set_fn!(doc = "Set Command List Override", clear_command_list_override, 3);
+    bit_set_fn!(doc = "Set Command List Override", set_command_list_override, 3);
 
     bit_get_fn!(doc = "Power On Device", power_on_device, 2);
     bit_set_fn!(doc = "Set Power On Device", enable_power_on_device, 2);
@@ -637,7 +654,35 @@ impl CommandAndStatus {
     bit_clear_fn!(doc = "Stop", stop, 0);
 }
 
-#[derive(Debug)]
+impl fmt::Debug for CommandAndStatus {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        try!(write!(f, "CommandAndStatus:\n"));
+        try!(write!(f, "\tICC: {}\n", self.icc()));
+        try!(write!(f, "\tAggressive Slumber / Partial (ASP): {}\n", self.aggressive_slumber()));
+        try!(write!(f, "\tAggressive Link Power Management Enable (ALPE): {}\n", self.aggressive_link_power_mgmt()));
+        try!(write!(f, "\tDrive LED on ATAPI Enable (DLAE): {}\n", self.drive_led_on_atapi()));
+        try!(write!(f, "\tDevice is ATAPI: {}\n", self.device_is_atapi()));
+        try!(write!(f, "\tAutomatic Partial to Slumber Transitions Enabled (APSTE): {}\n", self.automatic_partial_slumber_transitions()));
+        try!(write!(f, "\tFIS-based Switching Capable Port: {}\n", self.fis_switching_port()));
+        try!(write!(f, "\tExternal SATA Port: {}\n", self.external_sata_port()));
+        try!(write!(f, "\tCold Presence Detection: {}\n", self.cold_presence_detection()));
+        try!(write!(f, "\tMechanical Presence Switch Attached to Port: {}\n", self.mechanical_presence_switch_attached()));
+        try!(write!(f, "\tHot Plug Capable Port: {}\n", self.hot_plug_capable_port()));
+        try!(write!(f, "\tPort Multiplier Attached: {}\n", self.port_multiplier_attached()));
+        try!(write!(f, "\tCold Presence State: {}\n", self.cold_presence()));
+        try!(write!(f, "\tCommand List Running (CR): {}\n", self.command_list_running()));
+        try!(write!(f, "\tCurrent Command Slot (CCS): {}\n", self.ccs()));
+        try!(write!(f, "\tFIS Receive Running (FR): {}\n", self.fis_receive_running()));
+        try!(write!(f, "\tMechanical Presence Switch State: {}\n", self.mechanical_presence_switch_state()));
+        try!(write!(f, "\tFIS Receive (FRE): {}\n", self.fis_receive()));
+        try!(write!(f, "\tCommand List Override: {}\n", self.command_list_override()));
+        try!(write!(f, "\tPower On Device: {}\n", self.power_on_device()));
+        try!(write!(f, "\tSpin-Up Device: {}\n", self.spin_up_device()));
+        write!(f, "\tIs Started? (ST): {}\n", self.is_started())
+    }
+}
+
+
 pub struct TaskFileData(u32);
 
 impl TaskFileData {
@@ -645,10 +690,23 @@ impl TaskFileData {
         bits_get(self.0, 8, 15) as u8
     }
 
+    bit_get_fn!(doc = "Indicates the interface is busy.", busy, 7);
+    bit_get_fn!(doc = "Data Transfer Requested.", drq, 3);
+    bit_get_fn!(doc = "Indicates an error during the transfer.", err, 0);
+
     pub fn status(&self) -> u8 {
         bits_get(self.0, 0, 7) as u8
     }
 }
+
+impl fmt::Debug for TaskFileData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        try!(write!(f, "TaskFileData:\n"));
+        try!(write!(f, "\tErrors: 0b{:b}\n", self.error()));
+        write!(f, "\tStatus: 0b{:b}\n", self.status())
+    }
+}
+
 
 #[derive(Debug)]
 pub struct PortSignature(u32);
@@ -715,7 +773,6 @@ impl SerialAtaControl {
     }
 }
 
-#[derive(Debug)]
 pub struct SerialAtaError(u32);
 
 impl SerialAtaError {
@@ -724,15 +781,62 @@ impl SerialAtaError {
         bits_get(self.0, 16, 31) as u16
     }
 
+    bit_get_fn!(doc = "Exchange (X): Indicates that a change in device presence has been detected", exchange, 26);
+    bit_get_fn!(doc = "Unknown FIS Type (F)", unknown_fis_type, 25);
+    bit_get_fn!(doc = "Transport state transition error (T)", transport_state_transition_error, 24);
+    bit_get_fn!(doc = "Link Sequence Error (S)", link_sequence_error, 23);
+    bit_get_fn!(doc = "Handshake Error (H)", handshake_error, 22);
+    bit_get_fn!(doc = "CRC Error (C)", crc_error, 21);
+    bit_get_fn!(doc = "Disparity Error (D)", disparity_error, 20);
+    bit_get_fn!(doc = "10B to 8B Decode Error (B)", decode_error, 19);
+    bit_get_fn!(doc = "Comm Wake (W)", comm_wake, 18);
+    bit_get_fn!(doc = "Phy Internal Error (I)", phy_internal_error, 17);
+    bit_get_fn!(doc = "PhyRdy Change (N)", phyrdy_change, 16);
+
     pub fn error(&self) -> u16 {
         bits_get(self.0, 0, 15) as u16
     }
 
-    pub fn clear(&mut self) {
-        self.0 = 0b00000111111111110000111100000011;
-    }
+    bit_get_fn!(doc = "Internal Error (E)", internal_error, 11);
+    bit_get_fn!(doc = "Protocol Error (P)", protocol_error, 10);
+    bit_get_fn!(doc = "Persistent Communication or Data Integrity Error (C)", comm_data_error, 9);
+    bit_get_fn!(doc = "Transient Data Integrity Error (T)", transient_data_integrity_error, 8);
+    bit_get_fn!(doc = "Recovered Communications Error (M)", recovered_communication_error, 1);
+    bit_get_fn!(doc = "Recovered Data Integrity Error (I)", recovered_data_integrity_error, 0);
 
+    pub fn clear(&mut self) {
+        self.0 = u32::max_value();
+    }
 }
+
+impl fmt::Debug for SerialAtaError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        try!(write!(f, "SerialAtaError:\n"));
+
+        try!(write!(f, "- Diagnostics:\n"));
+        try!(write!(f, "\tExchange (X): {}\n", self.exchange()));
+        try!(write!(f, "\tUnknown FIS Type (F): {}\n", self.unknown_fis_type()));
+        try!(write!(f, "\tTransport state (T): {}\n", self.transport_state_transition_error()));
+        try!(write!(f, "\tLink Sequence Error (S): {}\n", self.link_sequence_error()));
+        try!(write!(f, "\tHandshake Error (H): {}\n", self.handshake_error()));
+        try!(write!(f, "\tCRC Error (C): {}\n", self.crc_error()));
+        try!(write!(f, "\tDisparity Error (D): {}\n", self.disparity_error()));
+        try!(write!(f, "\t10B to 8B Decode Error (B): {}\n", self.decode_error()));
+        try!(write!(f, "\tComm Wake (W): {}\n", self.comm_wake()));
+        try!(write!(f, "\tPhy Internal Error (I): {}\n", self.phy_internal_error()));
+        try!(write!(f, "\tPhyRdy Change (N): {}\n", self.phyrdy_change()));
+
+        try!(write!(f, "- Error:\n"));
+        try!(write!(f, "\tInternal Error (E): {}\n", self.internal_error()));
+        try!(write!(f, "\tProtocol Error (P): {}\n", self.protocol_error()));
+        try!(write!(f, "\tPersistent Communication or Data Integrity Error (C): {}\n", self.comm_data_error()));
+        try!(write!(f, "\tTransient Data Integrity Error (T): {}\n", self.transient_data_integrity_error()));
+        try!(write!(f, "\tRecovered Communications Error (M): {}\n", self.recovered_communication_error()));
+        write!(f, "\tRecovered Data Integrity Error (I): {}\n", self.recovered_data_integrity_error())
+    }
+}
+
+
 
 #[derive(Debug)]
 pub struct SerialAtaActive(u32);

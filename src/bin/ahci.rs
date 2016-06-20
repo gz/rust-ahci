@@ -5,8 +5,17 @@ extern crate driverkit;
 
 use mmap::*;
 use ahci::*;
+use ahci::fis::*;
 use std::mem;
 use driverkit::mem::DevMem;
+use std::thread; // sleep()
+use std::time::Duration; // sleep()
+
+const ATA_CMD_READ_DMA_EXT: u8 = 0x25;
+const ATA_CMD_WRITE_DMA_EXT: u8 = 0x35;
+const ATA_CMD_IDENTIFY: u8 = 0xEC;
+const ATA_DEV_BUSY: u8 = 0x80;
+const ATA_DEV_DRQ: u8 = 0x08;
 
 pub fn round_up(val: usize, target: usize) -> usize {
 	return (val + target - 1) / target * target;
@@ -21,7 +30,6 @@ impl AhciDisk {
     pub fn from_uio(uio_num: usize) -> AhciDisk {
         let dev = uio::UioDevice::new(uio_num).unwrap();
         let bar = dev.map_resource(5).unwrap();
-
 
         AhciDisk { bar5: bar, dev: dev }
     }
@@ -72,7 +80,7 @@ impl<'a> AhciPort<'a> {
         port.fb = fb_mem.physical_address();
 
         // Determine which events should cause an interrupt
-        port.ie.enable_task_file_error();
+        /*port.ie.enable_task_file_error();
         port.ie.enable_host_bus_fatal_error();
         port.ie.enable_host_bus_data_error();
         port.ie.enable_interface_fatal_error();
@@ -86,7 +94,9 @@ impl<'a> AhciPort<'a> {
         port.ie.enable_unknown_fis_irq();
         port.ie.enable_device_bits_fis_irq();
         port.ie.enable_pio_setup_irq();
-        port.ie.enable_d2h_register_fis_interrupt();
+        port.ie.enable_d2h_register_fis_interrupt();*/
+        port.ie.enable_all();
+        //port.ie.disable_all();
 
         let mut ctba_mem = Vec::with_capacity(ncs as usize);
         for slot in 0..ncs {
@@ -100,12 +110,25 @@ impl<'a> AhciPort<'a> {
             ctba_mem.push(mem);
         }
 
+        println!("Before Reset {:?}", idx);
+        port.reset();
+
+        port.cmd.set_command_list_override();
+        while port.cmd.command_list_override() {}
+
+        println!("Before Activating Port {:?}\n", idx);
+        println!("port.serr: {:?}\n", port.serr);
+        println!("port.tfd {:?}", port.tfd);
+
         // Software shall not set PxCMD.ST to ‘1’ until it is determined
         // that a functional device is present on the port as determined
         // by PxTFD.STS.BSY = ‘0’, PxTFD.STS.DRQ = ‘0’, and PxSSTS.DET = 3h.
         if port.is_present() {
             println!("Activating Port {:?}", idx);
             port.start();
+        }
+        else {
+            panic!("Can't activate shit.");
         }
 
         AhciPort {
@@ -150,19 +173,54 @@ impl<'a> AhciPort<'a> {
         // PRDTL containing the number of entries in the PRD table:
         header.prdtl = 1;
         // CFL set to the length of the command in the CFIS area:
-        header.set_cfl(2);
+        header.set_cfl( (mem::size_of::<fis::H2DRegister>() / mem::size_of::<u32>()) as u8 );
         // A bit set if it is an ATAPI command:
-        header.set_atapi();
+        //header.set_atapi();
         // W (Write) bit set if data is going to the device:
         if write {
             header.set_write();
         }
+        assert!(self.ctba_mem[slot as usize].physical_address() == header.ctba);
+
+        println!("self.ctba_mem[slot as usize].physical_address() 0x{:x}", self.ctba_mem[slot as usize].physical_address());
+
+        println!("self.ctba_mem[slot as usize].virtual_address() 0x{:x}", self.ctba_mem[slot as usize].virtual_address());
 
         let table: &mut CommandTable = unsafe { &mut *(self.ctba_mem[slot as usize].data() as *mut CommandTable) };
-        table.prdt[0] = RegionDescriptor::new(mem.physical_address(), 511, true);
+        table.prdt[0] = RegionDescriptor::new(mem.physical_address(), 511, false);
 
+        assert!(mem::size_of::<fis::H2DRegister>() < 64);
 
+        // TOOD: count = 1?
+        let ata_identify = H2DRegister::new(
+            FisType::RegisterFis_H2D,
+            true,
+            ATA_CMD_IDENTIFY,
+            0, 0, 0, 0, 0, 0);
 
+        let fis: &mut fis::H2DRegister = unsafe { &mut *(table.cfis.as_ptr() as *mut fis::H2DRegister) };
+        *fis = ata_identify;
+        println!("{:?}", fis);
+
+        println!("Waiting for device to be ready... {:?}", self.port.tfd);
+        while (!self.port.tfd.busy() && self.port.tfd.drq()) {}
+
+        println!("Waiting for command to finish...");
+        assert!(self.port.cmd.command_list_running());
+
+        self.port.ci.set_commands_issued(slot);
+        while self.port.ci.commands_issued(slot) {
+            println!("port.is: {:?}", self.port.is);
+            println!("port.cmd {:?}", self.port.cmd);
+            println!("port.tfd {:?}", self.port.tfd);
+            println!("port.sntf {:?}", self.port.sntf);
+            println!("port.sact {:?}", self.port.sact);
+            println!("port.serr: {:?}\n", self.port.serr);
+
+            std::thread::sleep(Duration::from_millis(1000));
+        }
+
+        println!("We are done.");
     }
 
 }
@@ -175,7 +233,13 @@ pub fn main() {
 
     // Determine how many command slots the HBA supports, by reading CAP.NCS.
 
+    hba.ghc.reset();
+    while hba.ghc.reset_pending() {}
+    println!("Reset the HBA!");
     println!("{:?}", hba.cap);
+
+    hba.ghc.enable_interrupts();
+    //hba.ghc.disable_interrupts();
     hba.ghc.set_ahci();
 
     println!("Implemented ports: {:?}", hba.pi);
