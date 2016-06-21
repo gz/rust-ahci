@@ -59,31 +59,40 @@ pub struct H2DRegister {
 }
 
 impl H2DRegister {
-    pub fn new(t: FisType, c: bool, command: u8, features: u16, lba: u64, device: u8, icc: u8, count: u16, control: u8) -> H2DRegister {
+    pub fn new(t: FisType,
+               c: bool,
+               command: u8,
+               features: u16,
+               lba: u64,
+               device: u8,
+               icc: u8,
+               count: u16,
+               control: u8)
+               -> H2DRegister {
 
         let flags = match c {
-            true => 1<<7,
+            true => 1 << 7,
             false => 0,
         };
 
         let lba_low = (lba & 0xffffff) as u32; // bits 23:0
         let lba_high = ((lba & 0xffffff << 24) >> 24) as u32;
 
-        let lba_low_device = ( (device as u32) << 24) | lba_low;
+        let lba_low_device = ((device as u32) << 24) | lba_low;
         let lba_high_features = (features as u32 & 0xff00) << 16 | lba_high;
 
         H2DRegister {
             typ: t as u8,
             flags: flags,
             command: command,
-            features_low:  (features & 0xff) as u8,
+            features_low: (features & 0xff) as u8,
             lba_low_device: lba_low_device,
             lba_high_features: lba_high_features,
             count: count,
             icc: icc,
             control: control,
-            reserved: 0
-         }
+            reserved: 0,
+        }
     }
 }
 
