@@ -62,7 +62,7 @@ impl<'a> AhciPort<'a> {
     pub fn new(idx: usize, ncs: u32, port: &'a mut HbaPort) -> AhciPort {
         // Page 112:
         println!("Port {}: {:?}", idx, port.probe());
-        //port.stop();
+        port.stop();
 
         // If PxCMD.ST, PxCMD.CR, PxCMD.FRE and
         // PxCMD.FR are all cleared, the port is in an idle state.
@@ -78,9 +78,6 @@ impl<'a> AhciPort<'a> {
 
         port.clb = clb_mem.physical_address();
         port.fb = fb_mem.physical_address();
-
-        // Enable rfis?
-        port.cmd.enable_fis_receive();
 
         // Determine which events should cause an interrupt
         /*port.ie.enable_task_file_error();
@@ -114,18 +111,14 @@ impl<'a> AhciPort<'a> {
         }
 
         println!("Before Reset {:?}", idx);
-        //port.reset();
+        port.reset();
 
-        //port.cmd.set_command_list_override();
-        //while port.cmd.command_list_override() {}
+        port.cmd.set_command_list_override();
+        while port.cmd.command_list_override() {}
 
         println!("Before Activating Port {:?}\n", idx);
         println!("port.serr: {:?}\n", port.serr);
         println!("port.tfd {:?}", port.tfd);
-
-        println!("Wait for device to get ready");
-        while port.tfd.busy() && port.tfd.drq() {}
-        println!("Device is now ready...");
 
         // Software shall not set PxCMD.ST to ‘1’ until it is determined
         // that a functional device is present on the port as determined
@@ -242,7 +235,7 @@ pub fn main() {
 
     hba.ghc.reset();
     while hba.ghc.reset_pending() {}
-    println!("Reset the HBA!!");
+    println!("Reset the HBA!");
     println!("{:?}", hba.cap);
 
     hba.ghc.enable_interrupts();
