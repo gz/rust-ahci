@@ -70,17 +70,24 @@ impl<'a> AhciPort<'a> {
 
         // Page 112:
         port.stop();
-        port.reset();
+        //port.reset();
 
         // For each implemented port, system software shall allocate memory for
         // and program: PxCLB PxFB
         let clb_mem = DevMem::alloc(4096).unwrap(); // >1024 bytes
         port.clb.set(clb_mem.physical_address());
-        println!("CLB Physical Address: {:?}", clb_mem.physical_address());
+        println!("CLB Physical Address: {:x}", clb_mem.physical_address());
 
         let fb_mem = DevMem::alloc(4096).unwrap(); // >256 bytes
         port.fb.set(fb_mem.physical_address());
-        println!("FB Physical Address: {:?}", fb_mem.physical_address());
+        println!("FB Physical Address: {:x}", fb_mem.physical_address());
+
+        //port.cmd.enable_fis_receive();
+        port.serr.clear();
+
+        // Determine which events should cause an interrupt
+        port.ie.enable_all();
+
 
         let mut ctba_mem = Vec::with_capacity(ncs as usize);
         for slot in 0..ncs {
@@ -100,11 +107,7 @@ impl<'a> AhciPort<'a> {
         println!("port.cmd {:?}\n", port.cmd);
         println!("Port {}: {:?}", idx, port.probe());
 
-        // Determine which events should cause an interrupt
-        port.ie.enable_all();
-        port.serr.clear();
-
-        while port.tfd.busy() {
+        while port.tfd.busy() || port.tfd.drq() || !port.is_present() {
             std::thread::sleep(Duration::from_millis(1000));
             println!("Before Activating Port {:?}\n", idx);
 
@@ -234,7 +237,7 @@ pub fn main() {
     // Determine how many command slots the HBA supports, by reading CAP.NCS.
     let ncs = hba.cap.command_slots();
 
-    hba.ghc.disable_interrupts();
+    //hba.ghc.disable_interrupts();
 
     hba.ghc.reset();
     while hba.ghc.reset_pending() {}

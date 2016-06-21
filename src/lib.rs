@@ -459,11 +459,10 @@ impl HbaPort {
     pub fn is_idle(&self) -> bool {
         // If PxCMD.ST, PxCMD.CR, PxCMD.FRE and
         // PxCMD.FR are all cleared, the port is in an idle state.
-        !port.cmd.command_list_running() &&
-        !port.cmd.is_started() &&
-        !port.cmd.fis_receive() &&
-        !port.cmd.fis_receive_running() &&
-
+        !self.cmd.command_list_running() &&
+        !self.cmd.is_started() &&
+        !self.cmd.fis_receive() &&
+        !self.cmd.fis_receive_running()
     }
 
     pub fn start(&mut self) {
@@ -503,7 +502,7 @@ impl HbaPort {
     }
 
     pub fn is_present(&self) -> bool {
-        self.ssts.device_detection() == HBA_SSTS_PRESENT && !self.tfd.busy() && !self.tfd.drq()
+        self.ssts.device_detection() == HBA_SSTS_PRESENT
     }
 
     pub fn probe(&self) -> HbaPortType {
