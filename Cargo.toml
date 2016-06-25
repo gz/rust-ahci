@@ -4,10 +4,19 @@ version = "0.1.0"
 authors = ["Gerd Zellweger <mail@gerdzellweger.com>"]
 
 [dependencies]
+driverkit = { path = "../rust-driverkit" }
 uio = "0.1.*"
 mmap = "*"
-driverkit = { path = "../rust-driverkit" }
+
 
 [[bin]]
 name = "ahci"
 path = "src/bin/ahci.rs"
+
+[[bin]]
+name = "ahci2"
+path = "src/bin/ahci2.rs"
+
+[[bin]]
+name = "ahci3"
+path = "src/bin/ahci3.rs"

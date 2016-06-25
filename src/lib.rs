@@ -166,7 +166,8 @@ impl HbaInterruptStatus {
     }
 
     pub fn clear(&mut self, port: usize) {
-        self.0.set(self.0.get() & !(1 << port));
+        let current = self.0.get();
+        self.0.set(current & !(1 << port));
     }
 }
 
@@ -233,7 +234,8 @@ impl CommandCompletionPorts {
 
     /// Is port part of the command completion coalescing feature?
     pub fn set_cc(&mut self, port: u32) {
-        self.0.set(self.0.get() | 1 << port);
+        let current = self.0.get();
+        self.0.set(current | 1 << port);
     }
 }
 
@@ -495,7 +497,7 @@ impl HbaPort {
 
         self.sctl.set_device_detection_init(0x1);
         thread::sleep(Duration::from_millis(2));
-        self.sctl.set_device_detection_init(0x0);
+        self.sctl.set_device_detection_init(0x3);
         while self.ssts.device_detection() != 0x3 {}
 
         self.serr.clear();
@@ -1131,7 +1133,8 @@ impl CommandsIssued {
     }
 
     pub fn set_commands_issued(&mut self, slot: u8) {
-        self.0.set(self.0.get() | 1 << slot);
+        let current = self.0.get();
+        self.0.set(current | 1 << slot);
     }
 }
 
@@ -1149,7 +1152,8 @@ impl SerialAtaNotification {
     }
 
     pub fn clear_pm_notify(&mut self, port: u8) {
-        self.0.set(self.0.get() | 1 << port);
+        let current = self.0.get();
+        self.0.set(current | 1 << port);
     }
 }
 
@@ -1262,32 +1266,38 @@ impl CommandHeader {
 
     /// ATAPI (A)
     pub fn set_atapi(&mut self) {
-        self.flags.set(self.flags.get() | 1 << 5);
+        let flags = self.flags.get();
+        self.flags.set(flags | 1 << 5);
     }
 
     /// Write (W)
     pub fn set_write(&mut self) {
-        self.flags.set(self.flags.get() | 1 << 6);
+        let flags = self.flags.get();
+        self.flags.set(flags | 1 << 6);
     }
 
     /// Prefetchable (P)
     pub fn set_prefetchable(&mut self) {
-        self.flags.set(self.flags.get() | 1 << 7);
+        let flags = self.flags.get();
+        self.flags.set(flags | 1 << 7);
     }
 
     /// Reset (R)
     pub fn set_reset(&mut self) {
-        self.flags.set(self.flags.get() | 1 << 8);
+        let flags = self.flags.get();
+        self.flags.set(flags | 1 << 8);
     }
 
     /// BIST (B)
     pub fn set_bist(&mut self) {
-        self.flags.set(self.flags.get() | 1 << 9);
+        let flags = self.flags.get();
+        self.flags.set(flags | 1 << 9);
     }
 
     /// Clear Busy upon R_OK (C)
     pub fn set_clear_busy(&mut self) {
-        self.flags.set(self.flags.get() | 1 << 10);
+        let flags = self.flags.get();
+        self.flags.set(flags | 1 << 10);
     }
 }
 

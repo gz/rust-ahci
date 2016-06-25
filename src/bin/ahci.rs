@@ -233,6 +233,8 @@ pub fn main() {
     println!("Hello from AHCI");
     let mut disk = AhciDisk::from_uio(0);
     let mut hba: &mut Hba = disk.get_hba_mut();
+    println!("hba.ghc.ahci {:?}", hba.ghc.ahci());
+    hba.ghc.set_ahci();
 
     // Determine how many command slots the HBA supports, by reading CAP.NCS.
     let ncs = hba.cap.command_slots();
@@ -243,7 +245,6 @@ pub fn main() {
     while hba.ghc.reset_pending() {}
     std::thread::sleep(Duration::from_millis(10));
 
-    hba.ghc.set_ahci();
     hba.ghc.enable_interrupts();
 
     println!("Reset the HBA!");
@@ -253,9 +254,80 @@ pub fn main() {
     println!("Hba ahci: {:?}", hba.ghc.ahci());
     println!("Implemented ports: {:?}", hba.pi);
 
-    let mut ports = Vec::new();
-    let mut port = unsafe { hba.get_port_mut(0) };
-    println!("Busy: {:?}", port.tfd.busy());
+    let fb_mem = DevMem::alloc(4096).unwrap(); // >256 bytes
+    let clb_mem = DevMem::alloc(4096).unwrap(); // >256 bytes
 
-    ports.push(AhciPort::new(0, ncs, port));
+    {
+        let mut port = unsafe { hba.get_port_mut(0) };
+        port.stop();
+        assert!(!port.cmd.is_started());
+        assert!(!port.cmd.command_list_running());
+        assert!(!port.cmd.fis_receive());
+        assert!(!port.cmd.fis_receive_running());
+
+        println!("[1] Busy: {:?}", port.tfd.busy());
+        println!("Present: {:?}", port.is_present());
+        //port.reset();
+        port.fb.set(fb_mem.physical_address());
+        port.clb.set(0x0000000001000000);
+        port.serr.clear();
+        port.cmd.enable_fis_receive();
+        port.serr.clear();
+        port.ie.enable_all();
+    }
+
+    {
+        let mut port = unsafe { hba.get_port_mut(1) };
+        port.stop();
+        assert!(!port.cmd.is_started());
+        assert!(!port.cmd.command_list_running());
+        assert!(!port.cmd.fis_receive());
+        assert!(!port.cmd.fis_receive_running());
+
+        println!("[1] Busy: {:?}", port.tfd.busy());
+        println!("Present: {:?}", port.is_present());
+        //port.reset();
+        port.fb.set(0x0000000001000000);
+        port.clb.set(0x0000000001000000);
+        port.serr.clear();
+        port.cmd.enable_fis_receive();
+        port.serr.clear();
+        port.ie.enable_all();
+    }
+
+    {
+        let mut port = unsafe { hba.get_port_mut(2) };
+        port.stop();
+        assert!(!port.cmd.is_started());
+        assert!(!port.cmd.command_list_running());
+        assert!(!port.cmd.fis_receive());
+        assert!(!port.cmd.fis_receive_running());
+
+        println!("[1] Busy: {:?}", port.tfd.busy());
+        println!("Present: {:?}", port.is_present());
+        //port.reset();
+        port.fb.set(0x0000000001000000);
+        port.clb.set(0x0000000001000000);
+        port.serr.clear();
+        port.cmd.enable_fis_receive();
+        port.serr.clear();
+        port.ie.enable_all();
+    }
+
+    let mut port = unsafe { hba.get_port_mut(0) };
+    println!("Port 0 busy: {:?}", port.tfd.busy());
+    let mut i = 0;
+    while port.tfd.busy() {
+        port.cmd.disable_fis_receive();
+        while port.cmd.fis_receive_running() {}
+        port.cmd.enable_fis_receive();
+
+        port.serr.clear();
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    println!("XXX Busy: {:?}", port.tfd.busy());
+
+
+    //let mut ports = Vec::new();
+    //ports.push(AhciPort::new(0, ncs, port));
 }
